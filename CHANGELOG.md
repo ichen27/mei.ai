@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-19 — Browser check runner
+
+### Fixed
+- The browser check runs on Ubuntu 24.04 again. The default GitHub runner image moved to Ubuntu 26.04, where Playwright 1.58 cannot install Chromium, so the check failed on every pull request.
+
 ## 2026-09-24 — Recruiter product workspace
 
 ### Added
