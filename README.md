@@ -1,6 +1,6 @@
 <div align="center">
 
-# Restaurant Call Agent
+# mei.ai
 
 **From a phone conversation to a kitchen-ready pickup order.**
 
@@ -10,7 +10,7 @@ A restaurant ordering workspace with a voice-agent integration, menu validation,
 
 </div>
 
-![Restaurant Call Agent — the live order board and sample-call workspace](docs/images/dashboard.png)
+![mei.ai — the live order board and sample-call workspace](docs/images/dashboard.png)
 
 ## Why I built it
 

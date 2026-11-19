@@ -39,7 +39,7 @@ export function createDemoApp(options: Options = {}) {
     next();
   });
   app.get('/health', (_req, res) =>
-    res.json({ ok: true, service: 'restaurant-call-agent-demo', storage: 'isolated-memory' })
+    res.json({ ok: true, service: 'mei-ai-demo', storage: 'isolated-memory' })
   );
   app.post(
     '/api/demo/sessions',
