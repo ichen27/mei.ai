@@ -339,10 +339,11 @@ export function createApp(options: CreateAppOptions = {}) {
   }));
 
   app.get('/api/stores/:storeId/events', requireRole('STAFF'), asyncRoute(async (req, res) => {
-    const since = Number(req.query.since_id ?? 0);
+    const sinceRaw = Number(req.query.since_id ?? 0);
+    const since = Number.isSafeInteger(sinceRaw) && sinceRaw >= 0 ? sinceRaw : 0;
     const storeId = z.string().parse(req.params.storeId);
     if (!allowStoreScope(req.auth?.storeId, storeId, res)) return;
-    const events = await db.getEventsSince(storeId, Number.isNaN(since) ? 0 : since);
+    const events = await db.getEventsSince(storeId, since);
     const next = events.length ? events[events.length - 1]?.id : since;
     res.json({ events, next_since_id: next });
   }));
