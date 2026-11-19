@@ -8,7 +8,9 @@ permissions:
   contents: read
 jobs:
   browser:
-    runs-on: ubuntu-latest
+    # Pinned: the Playwright version in apps/staff-web cannot install its browser on Ubuntu 26.04,
+    # which ubuntu-latest now resolves to. Move back to ubuntu-latest after upgrading Playwright.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
