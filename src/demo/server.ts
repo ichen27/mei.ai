@@ -11,7 +11,7 @@ app.get('*', (_req, res) => res.sendFile(assets + 'index.html'));
 const server = createServer(app);
 const port = Number(process.env.PORT ?? 4173);
 server.listen(port, process.env.HOST ?? '127.0.0.1', () =>
-  console.log('Restaurant Call Agent demo: http://127.0.0.1:' + port)
+  console.log('mei.ai demo: http://127.0.0.1:' + port)
 );
 for (const signal of ['SIGTERM', 'SIGINT'] as const)
   process.on(signal, () => {

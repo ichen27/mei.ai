@@ -195,12 +195,12 @@ export function DemoApp() {
   return (
     <div className="demo-app">
       <aside className="demo-sidebar">
-        <a className="demo-brand" href="/" aria-label="Restaurant Call Agent home">
+        <a className="demo-brand" href="/" aria-label="mei.ai home">
           <span className="brand-icon">
             <Icon name="phone" size={21} />
           </span>
           <span>
-            Call Agent<span className="brand-caption">RESTAURANT OPERATIONS</span>
+            mei.ai<span className="brand-caption">RESTAURANT OPERATIONS</span>
           </span>
         </a>
         <div className="restaurant-switch">
@@ -235,7 +235,7 @@ export function DemoApp() {
             <br />
             Explore freely. Reset anytime.
           </p>
-          <a href="https://github.com/ichen27/restaurant-call-agent" target="_blank" rel="noreferrer">
+          <a href="https://github.com/ichen27/mei.ai" target="_blank" rel="noreferrer">
             <Icon name="code" size={17} />
             View source <span>↗</span>
           </a>
@@ -743,7 +743,7 @@ export function DemoApp() {
                   </p>
                   <a
                     className="primary-button"
-                    href="https://github.com/ichen27/restaurant-call-agent"
+                    href="https://github.com/ichen27/mei.ai"
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -755,7 +755,7 @@ export function DemoApp() {
           </main>
         )}
         <footer className="workspace-footer">
-          <span>Restaurant Call Agent</span>
+          <span>mei.ai</span>
           <span>Pickup orders, thoughtfully handled.</span>
           <span>Sample data only</span>
         </footer>

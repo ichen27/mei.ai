@@ -10,7 +10,7 @@ docker compose -f compose.demo.yml ps
 curl --fail http://localhost:4173/health
 ```
 
-Expected health fields: `ok: true`, `service: restaurant-call-agent-demo`, `storage: isolated-memory`.
+Expected health fields: `ok: true`, `service: mei-ai-demo`, `storage: isolated-memory`.
 
 To use another host port:
 

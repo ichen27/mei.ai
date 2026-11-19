@@ -44,5 +44,5 @@ server.on('upgrade', (request, socket, head) => {
 });
 
 server.listen(port, () => {
-  console.log(`call-agent listening on ${port}`);
+  console.log(`mei.ai listening on ${port}`);
 });

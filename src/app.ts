@@ -152,7 +152,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.get('/health', (_req, res) => {
     res.json({
       ok: true,
-      service: 'call-agent',
+      service: 'mei-ai',
       backend,
       realtime_clients: realtimeGateway?.connectedCount() ?? 0,
       order_intake_enabled: isOrderIntakeEnabled()

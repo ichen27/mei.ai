@@ -27,7 +27,7 @@
 ### GET `/health`
 **Response**
 ```json
-{ "ok": true, "service": "call-agent", "backend": "memory", "realtime_clients": 0 }
+{ "ok": true, "service": "mei-ai", "backend": "memory", "realtime_clients": 0 }
 ```
 
 ---
