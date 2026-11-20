@@ -107,9 +107,13 @@ export function handleTelnyxStream(request: Request, env: Env, debug = false): R
   let inboundFrames = 0;
   let outboundChunks = 0;
 
-  const log = (event: string, data: Record<string, unknown> = {}) => {
+  /**
+   * Records a call event. Everything goes to the key-protected call record;
+   * `sensitive` details (what was said) are kept out of the platform logs.
+   */
+  const log = (event: string, data: Record<string, unknown> = {}, sensitive: Record<string, unknown> = {}) => {
     const entry = { event, t: startedAt ? Date.now() - startedAt : 0, ...data };
-    if (events.length < 400) events.push(entry);
+    if (events.length < 400) events.push({ ...entry, ...sensitive });
     console.log(JSON.stringify({ call: callId, ...entry }));
   };
 
@@ -168,9 +172,9 @@ export function handleTelnyxStream(request: Request, env: Env, debug = false): R
         if (message.status !== 'idle') gated = false;
       } else if (message.type === 'transcript' && message.role === 'user') {
         awaitingReply = true;
-        log('caller', { text: message.text });
+        log('caller', {}, { text: message.text });
       } else if (message.type === 'transcript_end') {
-        log('assistant', { text: message.text });
+        log('assistant', {}, { text: message.text });
       } else if (
         message.type === 'metrics' ||
         message.type === 'turn_metrics' ||
@@ -233,9 +237,12 @@ export function handleTelnyxStream(request: Request, env: Env, debug = false): R
         const raw = message.start?.call_control_id ?? message.stream_id ?? crypto.randomUUID();
         callId = raw.replace(/[^A-Za-z0-9_-]/g, '_').slice(-60);
         startedAt = Date.now();
-        // Keep the carrier's own description of the stream: its exact shape is
-        // what this adapter depends on.
-        log('call_start', { carrier_start: message });
+        // Keep the shape of the carrier's stream description, which this adapter
+        // depends on, but not its values: they include the caller's phone number.
+        log('call_start', {
+          start_fields: Object.keys(message.start ?? {}),
+          media_format: (message.start as { media_format?: unknown } | undefined)?.media_format ?? null
+        });
         connectAgent().catch((err: unknown) => {
           log('agent_connect_failed', { error: err instanceof Error ? err.message : 'unknown' });
           void closeAll();

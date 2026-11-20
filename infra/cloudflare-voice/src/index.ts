@@ -1,4 +1,3 @@
-import { routeAgentRequest } from 'agents';
 import type { Env } from './env';
 import { handleTelnyxStream } from './telnyx-adapter';
 
@@ -80,6 +79,8 @@ export default {
       }
       return handleTelnyxStream(request, env, url.searchParams.get('debug') === '1');
     }
-    return (await routeAgentRequest(request, env)) ?? new Response('Not found', { status: 404 });
+    // The voice agent is reached only through the token-checked audio stream above.
+    // It is deliberately not exposed on the SDK's public /agents/* route.
+    return new Response('Not found', { status: 404 });
   }
 };
