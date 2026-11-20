@@ -79,9 +79,9 @@ export class CallRecorder {
     }
   }
 
-  toolFinished(name: string, ms: number, ok: boolean): void {
+  toolFinished(name: string, ms: number, ok: boolean, detail?: Record<string, unknown>): void {
     this.tools.push({ name, ms, ok });
-    this.write('tool', { name, ms, ok });
+    this.write('tool', { name, ms, ok, ...detail });
   }
 
   addUsage(usage: unknown): void {

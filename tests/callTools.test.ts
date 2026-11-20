@@ -63,6 +63,17 @@ describe('CallToolHandler', () => {
       expect(parsed.items).toHaveLength(1);
       expect(parsed.items[0].name).toBe('Cheeseburger');
     });
+
+    it('lists the full menu when the query is empty or missing', async () => {
+      mockFetch.mockResolvedValue({ ok: true, json: async () => ({ items: [] }) });
+
+      await handler.execute('search_menu', JSON.stringify({ query: '' }));
+      await handler.execute('search_menu', '{}');
+
+      for (const call of mockFetch.mock.calls.slice(-2)) {
+        expect(call[0]).toBe('http://localhost:3000/api/internal/stores/store-1/menu?q=');
+      }
+    });
   });
 
   describe('create_order', () => {

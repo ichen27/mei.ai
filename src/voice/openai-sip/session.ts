@@ -196,7 +196,7 @@ export class SipCallSession {
         message: 'No staff line is configured. Apologize and offer to keep helping.'
       });
     }
-    recorder.toolFinished(call.name, Date.now() - startedAt, toolSucceeded(output));
+    recorder.toolFinished(call.name, Date.now() - startedAt, toolSucceeded(output), menuSearchDetail(call, output));
     this.runningTools -= 1;
     if (this.ended) return;
 
@@ -289,5 +289,20 @@ export class SipCallSession {
       tool_calls: summary.toolCalls
     });
     this.options.onEnded?.();
+  }
+}
+
+/** For menu searches, keeps what was asked and how many items came back. */
+function menuSearchDetail(call: FunctionCall, output: string): Record<string, unknown> | undefined {
+  if (call.name !== 'search_menu') return undefined;
+  try {
+    const args = JSON.parse(call.argsJson || '{}') as { query?: unknown };
+    const result = JSON.parse(output) as { items?: unknown };
+    return {
+      query: typeof args.query === 'string' ? args.query : '',
+      results: Array.isArray(result.items) ? result.items.length : null
+    };
+  } catch {
+    return undefined;
   }
 }

@@ -21,6 +21,11 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('end_call');
   });
 
+  it('tells the agent how to list the full menu', () => {
+    const prompt = buildSystemPrompt('Test Store');
+    expect(prompt).toContain('empty query to get the full menu');
+  });
+
   it('instructs to collect customer name', () => {
     const prompt = buildSystemPrompt('Test Store');
     expect(prompt).toContain('name');

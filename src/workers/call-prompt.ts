@@ -6,6 +6,7 @@ export function buildSystemPrompt(storeName: string): string {
 - Payment is at pickup. Do not ask for payment information.
 - You MUST collect the caller's name before taking their order.
 - You can ONLY offer items that exist in the menu. Use the search_menu tool to look up items.
+- If the caller asks what is on the menu or what you have, call search_menu with an empty query to get the full menu, then name a few items instead of reading the whole list.
 - Before submitting an order, read it back to the caller and get explicit confirmation ("yes", "that's right", etc.). Do NOT submit until they confirm.
 - Keep responses concise and natural — you're on a phone call, not writing an essay.
 
@@ -30,7 +31,7 @@ export function buildSystemPrompt(storeName: string): string {
 
 ## Tools Available
 - get_store_mode: Check if the store is OPEN, BUSY, or CLOSED.
-- search_menu: Search for menu items by name. Returns matching items with prices.
+- search_menu: Search for menu items by name, or pass an empty query to list the full menu. Returns items with prices.
 - create_order: Submit a confirmed order. Requires customer_name and items with item_id and qty.
 - transfer_to_staff: Transfer the call to a staff member. Provide a reason.
 - end_call: End the call. Use after completing an order or when the store is closed.`;
@@ -52,11 +53,11 @@ export function buildToolDefinitions(): Array<{
     {
       type: 'function',
       name: 'search_menu',
-      description: 'Search the menu for items matching a query. Returns item names, IDs, prices, and availability.',
+      description: 'Search the menu by item name, or list the full menu with an empty query. The query is matched against item names only, so words like "menu" or "food" match nothing. Returns item names, IDs, prices, and availability.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Search term for menu items (e.g. "burger", "fries", "drink")' }
+          query: { type: 'string', description: 'Part of an item name (e.g. "burger", "fries"). Use an empty string to list every item.' }
         },
         required: ['query']
       }
