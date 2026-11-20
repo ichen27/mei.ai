@@ -38,4 +38,15 @@ describe('CallSession', () => {
     expect(msg.session.input_audio_format).toBe('pcm16');
     expect(msg.session.output_audio_format).toBe('pcm16');
   });
+
+  it('ignores malformed websocket frames instead of throwing', () => {
+    const session = new CallSession(config) as unknown as {
+      handleTwilioMessage(raw: string): void;
+      handleOpenAIMessage(raw: string): void;
+    };
+    for (const raw of ['not json', 'null', '42', '']) {
+      expect(() => session.handleTwilioMessage(raw)).not.toThrow();
+      expect(() => session.handleOpenAIMessage(raw)).not.toThrow();
+    }
+  });
 });
