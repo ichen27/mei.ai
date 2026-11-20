@@ -19,6 +19,16 @@ export interface CallSessionConfig {
   twilioAuthToken: string;
 }
 
+interface WsFrame {
+  event?: string;
+  type?: string;
+  media: { payload: string };
+  delta: string;
+  call_id: string;
+  name: string;
+  arguments: string;
+}
+
 export class CallSession {
   readonly callSid: string;
   readonly storeId: string;
@@ -119,8 +129,20 @@ export class CallSession {
     });
   }
 
+  private parseFrame(raw: string, source: string): WsFrame | null {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') return parsed;
+    } catch {
+      // fall through to the log below
+    }
+    safeLog('warn', 'ws_frame_invalid', { callSid: this.callSid, source });
+    return null;
+  }
+
   private handleTwilioMessage(raw: string): void {
-    const msg = JSON.parse(raw);
+    const msg = this.parseFrame(raw, 'twilio');
+    if (!msg) return;
 
     if (msg.event === 'media' && this.openaiWs?.readyState === WebSocket.OPEN) {
       const pcmBase64 = twilioToOpenAI(msg.media.payload);
@@ -136,7 +158,8 @@ export class CallSession {
   }
 
   private handleOpenAIMessage(raw: string): void {
-    const msg = JSON.parse(raw);
+    const msg = this.parseFrame(raw, 'openai');
+    if (!msg) return;
 
     if (msg.type === 'response.audio.delta' && this.twilioWs?.readyState === WebSocket.OPEN) {
       const mulawBase64 = openAIToTwilio(msg.delta);
