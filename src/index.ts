@@ -1,15 +1,31 @@
 import { createServer } from 'node:http';
+import express from 'express';
 import { WebSocketServer } from 'ws';
 import { createApp } from './app.js';
 import { RealtimeGateway } from './realtime/gateway.js';
 import { handleNewTwilioConnection, type CallWorkerConfig } from './workers/call.js';
 import type { CallSession } from './workers/call-session.js';
 import { safeLog } from './logger.js';
+import { createOpenAiSipClient } from './voice/openai-sip/client.js';
+import { readOpenAiSipConfig } from './voice/openai-sip/config.js';
+import { createOpenAiSipRouter } from './voice/openai-sip/router.js';
 
 const port = Number(process.env.PORT ?? 3000);
 const realtimeGateway = new RealtimeGateway();
 const { app, authService } = createApp({ realtimeGateway });
-const server = createServer(app);
+
+// --- OpenAI phone calls over SIP ---
+// OpenAI carries the call audio and notifies this webhook when a call arrives.
+// It is mounted ahead of the app so the signature check sees the raw body.
+const openAiSipConfig = readOpenAiSipConfig(process.env, port);
+const openAiSip = createOpenAiSipRouter({
+  config: openAiSipConfig,
+  client: createOpenAiSipClient(openAiSipConfig.apiKey)
+});
+const root = express();
+root.use('/api/webhooks/openai', openAiSip.router);
+root.use(app);
+const server = createServer(root);
 
 // --- Media Stream WebSocket for Twilio calls ---
 const callWorkerConfig: CallWorkerConfig = {

@@ -8,3 +8,4 @@ coverage/
 
 apps/staff-web/test-results/
 apps/staff-web/playwright-report/
+var/
