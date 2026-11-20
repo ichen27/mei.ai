@@ -1,0 +1,19 @@
+{
+  "name": "mei-ai-cloudflare-voice",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/voice-twilio": "^0.1.1",
+    "agents": "^0.34.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261120.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.165.0"
+  }
+}
