@@ -49,6 +49,23 @@ Open **[localhost:4173](http://localhost:4173)**.
 
 Every visitor gets a separate, temporary workspace. “Reset demo” restores the sample data. Conversations are simulated; order creation, validation, status transitions, session isolation, and event delivery run on the server.
 
+### Run the staff dashboard with your own menu
+
+The demo above uses a sample menu and simulated calls. To run the real order service, with a staff dashboard that phone agents send orders to:
+
+```bash
+npm ci && npm --prefix apps/staff-web ci
+npm run build && npm run staff:web:build
+MENU_FILE=data/menu.example.json INTERNAL_API_KEY=change-me-please npm start
+```
+
+Open **[localhost:3000/staff](http://localhost:3000/staff)** and sign in. Outside production the sample logins in `src/auth/config.ts` work; in production set `AUTH_USERS_JSON`, `JWT_SECRET` and `NODE_ENV=production`.
+
+- **Menu file.** `MENU_FILE` points at a JSON file in the shape of [`data/menu.example.json`](data/menu.example.json): one entry per orderable thing, so each size or style ("Pint", "Quart", "Steamed") is its own item with its own id and price. A bad file stops startup. Without `MENU_FILE` the two-item sample menu is used.
+- **Menu in the agent's context.** The phone agents get the whole menu in their instructions, grouped by section, so they can answer "what do you have?" without a lookup. Prices and totals still come from the server when the order is created.
+- **Orders are kept in memory** unless `STORE_BACKEND=postgres` is set, so they are lost when the process restarts.
+- **Other settings.** `HOST` limits the listening interface. `OPENAI_API_KEY_FILE` and `OPENAI_WEBHOOK_SECRET_FILE` read those keys from files instead of the environment.
+
 ## Walkthrough
 
 ![Recorded product walkthrough: call, confirmation, order board, and menu controls](docs/images/walkthrough.gif)
