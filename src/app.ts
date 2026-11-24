@@ -12,6 +12,7 @@ import { AuthService } from './auth/service.js';
 import { authenticateRequest, requireRole } from './auth/middleware.js';
 import { validateRuntimeSecurityConfig } from './auth/config.js';
 import type { RealtimeFanout } from './realtime/gateway.js';
+import type { OrderNotifier } from './notify/orderNotifier.js';
 
 const statusSchema = z.enum(['NEW', 'ACCEPTED', 'IN_PROGRESS', 'READY', 'COMPLETED', 'REJECTED', 'CANCELED']);
 const modeSchema = z.enum(['OPEN', 'BUSY', 'CLOSED']);
@@ -58,6 +59,8 @@ const patchOrderSchema = z
 
 interface CreateAppOptions {
   realtimeGateway?: RealtimeFanout;
+  /** Told about each new order placed by a phone agent. */
+  orderNotifier?: OrderNotifier;
 }
 
 interface LimiterOptions {
@@ -511,6 +514,17 @@ export function createApp(options: CreateAppOptions = {}) {
       total_cents: order.totalCents,
       created_at: order.createdAt
     });
+
+    // Sent after the response and only for a newly created order: a repeated
+    // request for the same call returned above, so it cannot notify twice.
+    if (options.orderNotifier) {
+      const store = await db.getStoreById(order.storeId);
+      void options.orderNotifier.orderCreated(order, {
+        ...(store?.name ? { storeName: store.name } : {}),
+        ...(store?.timezone ? { timezone: store.timezone } : {}),
+        ...(store?.defaultPrepMins ? { prepMins: store.defaultPrepMins } : {})
+      });
+    }
   }));
 
   app.post('/api/internal/call-events', asyncRoute(async (req, res) => {

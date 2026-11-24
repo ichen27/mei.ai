@@ -64,6 +64,7 @@ Open **[localhost:3000/staff](http://localhost:3000/staff)** and sign in. Outsid
 - **Menu file.** `MENU_FILE` points at a JSON file in the shape of [`data/menu.example.json`](data/menu.example.json): one entry per orderable thing, so each size or style ("Pint", "Quart", "Steamed") is its own item with its own id and price. A bad file stops startup. Without `MENU_FILE` the two-item sample menu is used.
 - **Menu in the agent's context.** The phone agents get the whole menu in their instructions, grouped by section, so they can answer "what do you have?" without a lookup. Prices and totals still come from the server when the order is created.
 - **Orders are kept in memory** unless `STORE_BACKEND=postgres` is set, so they are lost when the process restarts.
+- **Order texts.** On a Mac, set `ORDER_NOTIFY_IMESSAGE_TO` to a phone number or Apple ID and each new phone order is also sent as an iMessage from that Mac's Messages app, which must be signed in. macOS asks once for permission to let the server control Messages; until that is allowed, sends time out and are logged as `order_notify_failed`. A failed text never blocks the order.
 - **Other settings.** `HOST` limits the listening interface. `OPENAI_API_KEY_FILE` and `OPENAI_WEBHOOK_SECRET_FILE` read those keys from files instead of the environment.
 
 ## Walkthrough

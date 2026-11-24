@@ -10,10 +10,12 @@ import { createOpenAiSipClient } from './voice/openai-sip/client.js';
 import { readOpenAiSipConfig } from './voice/openai-sip/config.js';
 import { createOpenAiSipRouter } from './voice/openai-sip/router.js';
 import { createStaffWebRouter } from './http/staffWeb.js';
+import { createOrderNotifierFromEnv } from './notify/orderNotifier.js';
 
 const port = Number(process.env.PORT ?? 3000);
 const realtimeGateway = new RealtimeGateway();
-const { app, authService } = createApp({ realtimeGateway });
+const orderNotifier = createOrderNotifierFromEnv(process.env);
+const { app, authService } = createApp({ realtimeGateway, ...(orderNotifier ? { orderNotifier } : {}) });
 
 // --- OpenAI phone calls over SIP ---
 // OpenAI carries the call audio and notifies this webhook when a call arrives.
