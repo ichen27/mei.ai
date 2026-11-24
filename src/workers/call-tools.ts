@@ -71,9 +71,9 @@ export class CallToolHandler {
   }
 
   private async searchMenu(argsJson: string): Promise<string> {
-    const { query } = JSON.parse(argsJson) as { query: string };
+    const { query } = JSON.parse(argsJson || '{}') as { query?: string };
     const data = await this.apiGet(
-      `/api/internal/stores/${this.config.storeId}/menu?q=${encodeURIComponent(query)}`
+      `/api/internal/stores/${this.config.storeId}/menu?q=${encodeURIComponent(query ?? '')}`
     );
     return JSON.stringify(data);
   }

@@ -1,0 +1,9 @@
+{
+  // Answers the test phone number with a spoken confirmation so the carrier
+  // connection can be checked before any voice provider is attached.
+  "name": "mei-ai-line-check",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "workers_dev": true,
+  "preview_urls": false
+}

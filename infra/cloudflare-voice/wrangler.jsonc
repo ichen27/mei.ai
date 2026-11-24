@@ -1,0 +1,32 @@
+{
+  // mei.ai voice agent on Cloudflare: speech-to-text, a language model with the
+  // order tools, and text-to-speech, all on Workers AI. Phone audio arrives from
+  // Telnyx over a WebSocket.
+  "name": "mei-ai-cloudflare-voice",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": { "enabled": true },
+  "ai": { "binding": "AI" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "MeiVoiceAgent", "class_name": "MeiVoiceAgent" },
+      { "name": "CallLog", "class_name": "CallLog" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["MeiVoiceAgent"] },
+    { "tag": "v2", "new_sqlite_classes": ["CallLog"] }
+  ],
+  "vars": {
+    "ORDER_API_BASE_URL": "https://mei-voice.chenagent.com",
+    "STORE_ID": "store-1",
+    "STORE_NAME": "Mei Test Kitchen",
+    "LLM_MODEL": "@cf/openai/gpt-oss-120b",
+    "TTS_MODEL": "@cf/deepgram/aura-2-en",
+    "TTS_SPEAKER": "luna"
+  }
+  // Secrets (set with `wrangler secret put`): INTERNAL_API_KEY, CARRIER_KEY, STREAM_SIGNING_KEY
+}
