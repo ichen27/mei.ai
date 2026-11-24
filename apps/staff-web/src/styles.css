@@ -148,3 +148,15 @@ select {
 .error {
   color: #b91c1c;
 }
+
+.order-items {
+  margin: 0.4rem 0;
+  padding-left: 0;
+  list-style: none;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+.order-items li + li {
+  margin-top: 0.15rem;
+}

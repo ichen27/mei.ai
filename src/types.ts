@@ -16,6 +16,8 @@ export interface MenuItem {
   name: string;
   basePriceCents: number;
   isAvailable: boolean;
+  /** Menu section, when the menu source provides one. */
+  category?: string;
 }
 
 export interface OrderItemInput {

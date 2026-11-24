@@ -138,12 +138,26 @@ const PROMPT_ADDENDUM = `
 
 ## This phone line
 - transfer_to_staff is not available on this line. If the caller asks for a person, apologize and offer to keep helping.
-- To list the full menu, call search_menu without q. Prices come back in cents; say them as dollars and cents.
+- search_menu takes q, part of an item name. Prices from tools come back in cents; say them as dollars and cents.
 - Use end_call to hang up after the order is placed or when the caller says goodbye.`;
 
-function agentBody(toolIds) {
+/**
+ * The menu goes into the agent's prompt, so it is fixed when this script runs.
+ * Run the script again after the menu changes.
+ */
+async function fetchMenu() {
+  const res = await fetch(`${orderApi}/api/internal/stores/${storeId}/menu`, {
+    headers: { 'x-internal-api-key': internalApiKey, Accept: 'application/json' }
+  });
+  if (!res.ok) throw new Error(`menu request returned ${res.status}`);
+  const body = await res.json();
+  if (!Array.isArray(body.items) || body.items.length === 0) throw new Error('menu is empty');
+  return body.items;
+}
+
+function agentBody(toolIds, menu) {
   const prompt = {
-    prompt: buildSystemPrompt(storeName) + PROMPT_ADDENDUM,
+    prompt: buildSystemPrompt(storeName, menu) + PROMPT_ADDENDUM,
     temperature: 0,
     tool_ids: toolIds,
     built_in_tools: {
@@ -169,18 +183,21 @@ function agentBody(toolIds) {
   };
 }
 
-async function ensureAgent(toolIds) {
+async function ensureAgent(toolIds, menu) {
   const { agents = [] } = await call('GET', `/agents?page_size=100&search=${encodeURIComponent(agentName)}`);
   const found = agents.find((agent) => agent.name === agentName);
   if (found) {
-    await call('PATCH', `/agents/${found.agent_id}`, agentBody(toolIds));
+    await call('PATCH', `/agents/${found.agent_id}`, agentBody(toolIds, menu));
     return found.agent_id;
   }
-  const created = await call('POST', '/agents/create', agentBody(toolIds));
+  const created = await call('POST', '/agents/create', agentBody(toolIds, menu));
   return created.agent_id;
 }
 
+const menu = await fetchMenu();
 const secretId = await ensureSecret();
 const toolIds = await ensureTools(secretId);
-const agentId = await ensureAgent(toolIds);
-console.log(JSON.stringify({ agent_id: agentId, tool_ids: toolIds, secret_id: secretId }, null, 2));
+const agentId = await ensureAgent(toolIds, menu);
+console.log(
+  JSON.stringify({ agent_id: agentId, tool_ids: toolIds, secret_id: secretId, menu_items: menu.length }, null, 2)
+);

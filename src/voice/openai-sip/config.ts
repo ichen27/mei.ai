@@ -1,4 +1,5 @@
-import { buildSystemPrompt, buildToolDefinitions } from '../../workers/call-prompt.js';
+import { readFileSync } from 'node:fs';
+import { buildSystemPrompt, buildToolDefinitions, type PromptMenuItem } from '../../workers/call-prompt.js';
 
 /** Which OpenAI voice API answers a call: GPT-Live or the Realtime API. */
 export type SipMode = 'live' | 'realtime';
@@ -40,10 +41,26 @@ function parseNumberModes(value: string | undefined): Map<string, SipMode> {
   return modes;
 }
 
+/**
+ * Reads a secret from NAME, or from the file named by NAME_FILE, so a key can
+ * stay in a key store instead of being copied into an environment file.
+ */
+function readSecret(env: NodeJS.ProcessEnv, name: string): string {
+  const direct = env[name];
+  if (direct) return direct;
+  const file = env[`${name}_FILE`];
+  if (!file) return '';
+  try {
+    return readFileSync(file, 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
 export function readOpenAiSipConfig(env: NodeJS.ProcessEnv, port: number): OpenAiSipConfig {
   return {
-    apiKey: env.OPENAI_API_KEY ?? '',
-    webhookSecret: env.OPENAI_WEBHOOK_SECRET ?? '',
+    apiKey: readSecret(env, 'OPENAI_API_KEY'),
+    webhookSecret: readSecret(env, 'OPENAI_WEBHOOK_SECRET'),
     defaultMode: parseMode(env.OPENAI_SIP_MODE, 'live'),
     numberModes: parseNumberModes(env.OPENAI_SIP_NUMBER_MODES),
     liveModel: env.OPENAI_LIVE_MODEL ?? 'gpt-live-1.1',
@@ -61,21 +78,33 @@ export function readOpenAiSipConfig(env: NodeJS.ProcessEnv, port: number): OpenA
   };
 }
 
-const VOICE_ADDENDUM = `
+function voiceAddendum(hasMenu: boolean): string {
+  const source = hasMenu ? 'the Menu section or a tool result' : 'a tool result';
+  return `
 
 ## Voice
 - Say at the start that you are an AI assistant.
 - Speak in short sentences and stop talking when the caller interrupts.
-- Never state a menu item, price, availability, or order confirmation that did not come from a tool result.`;
+- Never state a menu item or price that did not come from ${source}.
+- Never state store status or an order confirmation that did not come from a tool result.`;
+}
 
-/** Accept body for a GPT-Live call. Tools run in the delegated backend model. */
-export function buildLiveAcceptBody(config: OpenAiSipConfig): Record<string, unknown> {
-  const prompt = buildSystemPrompt(config.storeName) + VOICE_ADDENDUM;
+/**
+ * Accept body for a GPT-Live call. Tools run in the delegated backend model.
+ * With `menu`, both models carry the menu, so the voice model can answer menu
+ * questions itself instead of waiting on the backend.
+ */
+export function buildLiveAcceptBody(config: OpenAiSipConfig, menu?: PromptMenuItem[]): Record<string, unknown> {
+  const hasMenu = (menu?.length ?? 0) > 0;
+  const prompt = buildSystemPrompt(config.storeName, menu) + voiceAddendum(hasMenu);
+  const delegate = hasMenu
+    ? 'Every tool runs in your backend. Answer menu questions yourself from the Menu section, and hand store-status and order work to the backend.'
+    : 'Every tool runs in your backend. Hand all menu, store-status, and order work to it.';
   return {
     session: {
       type: 'live',
       model: config.liveModel,
-      instructions: `${prompt}\n- Every tool runs in your backend. Hand all menu, store-status, and order work to it.`,
+      instructions: `${prompt}\n- ${delegate}`,
       input: [
         {
           type: 'message',
@@ -104,11 +133,11 @@ export function buildLiveAcceptBody(config: OpenAiSipConfig): Record<string, unk
 }
 
 /** Accept body for a Realtime API call. The speech model calls tools itself. */
-export function buildRealtimeAcceptBody(config: OpenAiSipConfig): Record<string, unknown> {
+export function buildRealtimeAcceptBody(config: OpenAiSipConfig, menu?: PromptMenuItem[]): Record<string, unknown> {
   return {
     type: 'realtime',
     model: config.realtimeModel,
-    instructions: buildSystemPrompt(config.storeName) + VOICE_ADDENDUM,
+    instructions: buildSystemPrompt(config.storeName, menu) + voiceAddendum((menu?.length ?? 0) > 0),
     audio: {
       input: { transcription: { model: config.realtimeTranscriptionModel } },
       output: { voice: config.voice }

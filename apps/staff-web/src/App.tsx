@@ -24,10 +24,12 @@ interface Order {
   notes?: string;
   rejectReason?: string;
   ackedClientIds: string[];
+  /** What was ordered, so the card is readable without opening Details. */
+  items: Array<{ name: string; qty: number }>;
 }
 
 interface OrderDetail {
-  order: Order & {
+  order: Omit<Order, 'items'> & {
     items: Array<{
       itemId: string;
       itemNameSnapshot: string;
@@ -253,6 +255,15 @@ export function App() {
                   #{order.orderNumber} {order.status} {unread ? <span className="badge">NEW</span> : null}
                 </h3>
                 <p>{order.customerName}</p>
+                {order.items.length > 0 ? (
+                  <ul className="order-items">
+                    {order.items.map((item, index) => (
+                      <li key={`${order.id}-${index}`}>
+                        <strong>{item.qty}×</strong> {item.name}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 <p>${(order.totalCents / 100).toFixed(2)}</p>
                 <p>{new Date(order.createdAt).toLocaleTimeString()}</p>
                 <div className="row">
@@ -489,7 +500,11 @@ async function loadOrders(
     promisedTime: typeof order.promisedTime === 'string' ? order.promisedTime : undefined,
     notes: typeof order.notes === 'string' ? order.notes : undefined,
     rejectReason: typeof order.rejectReason === 'string' ? order.rejectReason : undefined,
-    ackedClientIds: (order.ackedClientIds as string[]) ?? []
+    ackedClientIds: (order.ackedClientIds as string[]) ?? [],
+    items: (Array.isArray(order.items) ? (order.items as Array<Record<string, unknown>>) : []).map((item) => ({
+      name: String(item.itemNameSnapshot ?? item.itemId ?? ''),
+      qty: Number(item.qty ?? 1)
+    }))
   }));
   setOrders(mapped);
   const nextUnread = markUnread(existingUnread, mapped);

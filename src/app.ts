@@ -443,16 +443,22 @@ export function createApp(options: CreateAppOptions = {}) {
     if (!allowServiceToken(req, res, process.env.INTERNAL_API_KEY, 'x-internal-api-key')) return;
     const storeId = z.string().parse(req.params.storeId);
     const items = await db.getMenu(storeId);
-    const query = typeof req.query.q === 'string' ? req.query.q.toLowerCase() : '';
-    const filtered = query
-      ? items.filter((item) => item.name.toLowerCase().includes(query))
+    // Every word of the query must appear in the item's name or section, so
+    // "chicken fried rice" finds "Chicken Fried Rice (Pint)" in any word order.
+    const words = typeof req.query.q === 'string' ? req.query.q.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean) : [];
+    const filtered = words.length
+      ? items.filter((item) => {
+          const haystack = `${item.name} ${item.category ?? ''}`.toLowerCase();
+          return words.every((word) => haystack.includes(word));
+        })
       : items;
     res.json({
       items: filtered.map((item) => ({
         id: item.id,
         name: item.name,
         price_cents: item.basePriceCents,
-        is_available: item.isAvailable
+        is_available: item.isAvailable,
+        ...(item.category ? { category: item.category } : {})
       }))
     });
   }));

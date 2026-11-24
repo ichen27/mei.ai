@@ -3,6 +3,7 @@ import { getDbConfig } from '../db/config.js';
 import type { AppRepository } from './repository.js';
 import { MemoryStore } from './memory.js';
 import { PostgresStore } from './postgres.js';
+import { loadMenuFile } from './menuFile.js';
 
 export function createRepository(): { repository: AppRepository; backend: 'memory' | 'postgres' } {
   const config = getDbConfig();
@@ -14,7 +15,11 @@ export function createRepository(): { repository: AppRepository; backend: 'memor
     return { repository: createPostgresStore(), backend: 'postgres' };
   }
 
-  return { repository: new MemoryStore(), backend: 'memory' };
+  // MENU_FILE replaces the built-in sample menu. A bad file stops startup
+  // rather than silently serving the sample menu to callers.
+  const menuFile = process.env.MENU_FILE;
+  const seed = menuFile ? loadMenuFile(menuFile, 'store-1') : undefined;
+  return { repository: new MemoryStore(seed), backend: 'memory' };
 }
 
 export function createPostgresStore(): PostgresStore {

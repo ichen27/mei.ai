@@ -1,0 +1,12 @@
+{
+  "store": { "name": "Golden Wok", "timezone": "America/New_York" },
+  "items": [
+    { "id": "egg-roll", "name": "Vegetable Egg Roll (1)", "category": "Appetizers", "price_cents": 190 },
+    { "id": "wonton-soup-pint", "name": "Wonton Soup (Pint)", "category": "Soup", "price_cents": 395 },
+    { "id": "wonton-soup-quart", "name": "Wonton Soup (Quart)", "category": "Soup", "price_cents": 695 },
+    { "id": "dumplings-steamed", "name": "Dumplings (Steamed)", "category": "Appetizers", "price_cents": 735 },
+    { "id": "dumplings-fried", "name": "Dumplings (Fried)", "category": "Appetizers", "price_cents": 735 },
+    { "id": "pork-fried-rice-quart", "name": "Roast Pork Fried Rice (Quart)", "category": "Fried Rice", "price_cents": 995 },
+    { "id": "soda", "name": "Soda (Can)", "category": "Drinks", "price_cents": 130, "is_available": false }
+  ]
+}

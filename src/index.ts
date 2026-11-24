@@ -9,6 +9,7 @@ import { safeLog } from './logger.js';
 import { createOpenAiSipClient } from './voice/openai-sip/client.js';
 import { readOpenAiSipConfig } from './voice/openai-sip/config.js';
 import { createOpenAiSipRouter } from './voice/openai-sip/router.js';
+import { createStaffWebRouter } from './http/staffWeb.js';
 
 const port = Number(process.env.PORT ?? 3000);
 const realtimeGateway = new RealtimeGateway();
@@ -24,6 +25,12 @@ const openAiSip = createOpenAiSipRouter({
 });
 const root = express();
 root.use('/api/webhooks/openai', openAiSip.router);
+
+// --- Staff dashboard ---
+// Served from this process when it has been built (npm run staff:web:build).
+const staffWeb = createStaffWebRouter(process.env.STAFF_WEB_DIR ?? 'apps/staff-web/dist');
+if (staffWeb) root.use(staffWeb);
+
 root.use(app);
 const server = createServer(root);
 
@@ -59,6 +66,8 @@ server.on('upgrade', (request, socket, head) => {
   realtimeGateway.attachUpgrade(request.url, headers, socket, authService);
 });
 
-server.listen(port, () => {
-  console.log(`mei.ai listening on ${port}`);
-});
+// HOST limits which interface accepts connections, e.g. 127.0.0.1 behind a proxy.
+const host = process.env.HOST;
+const onListening = () => console.log(`mei.ai listening on ${host ?? '*'}:${port}`);
+if (host) server.listen(port, host, onListening);
+else server.listen(port, onListening);

@@ -1,12 +1,64 @@
-export function buildSystemPrompt(storeName: string): string {
+/** A menu item as the prompt needs it; matches the internal menu endpoint. */
+export interface PromptMenuItem {
+  id: string;
+  name: string;
+  price_cents: number;
+  is_available?: boolean;
+  category?: string;
+}
+
+function dollars(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+/**
+ * The menu as prompt text, grouped by section. Unavailable items are left out
+ * so the agent does not offer them. Returns '' when there is nothing to list.
+ */
+export function buildMenuSection(menu: PromptMenuItem[]): string {
+  const sections = new Map<string, string[]>();
+  for (const item of menu) {
+    if (item.is_available === false) continue;
+    const section = item.category ?? 'Menu';
+    const lines = sections.get(section) ?? [];
+    lines.push(`- ${item.name} | ${dollars(item.price_cents)} | id: ${item.id}`);
+    sections.set(section, lines);
+  }
+  if (sections.size === 0) return '';
+  const body = [...sections].map(([section, lines]) => `### ${section}\n${lines.join('\n')}`).join('\n\n');
+  return `
+
+## Menu
+This is the full current menu. Each line is: name | price | id.
+- Offer only these items, and use the exact id in create_order.
+- Many dishes come in more than one size or style, each on its own line with its own id. Ask which one the caller wants before adding it.
+- When the caller asks what you have, name a section or a few items instead of reading the list.
+- Prices here are for answering questions. The order total comes from create_order.
+- If the caller asks for something not listed, say it is not on the menu and offer something close.
+
+${body}`;
+}
+
+export function buildSystemPrompt(storeName: string, menu?: PromptMenuItem[]): string {
+  const menuSection = menu ? buildMenuSection(menu) : '';
+  return basePrompt(storeName, menuSection !== '') + menuSection;
+}
+
+function basePrompt(storeName: string, hasMenu: boolean): string {
+  const menuRules = hasMenu
+    ? `- You can ONLY offer items in the Menu section below. You already have the menu, so you do not need search_menu to answer what is available; use it only to double-check an item you are unsure about.`
+    : `- You can ONLY offer items that exist in the menu. Use the search_menu tool to look up items.
+- If the caller asks what is on the menu or what you have, call search_menu with an empty query to get the full menu, then name a few items instead of reading the whole list.`;
+  const takeOrderStep = hasMenu
+    ? `3. Take their order — ask what they'd like and match each item to the Menu section, including size or style.`
+    : `3. Take their order — ask what they'd like. Use search_menu to validate each item.`;
   return `You are a friendly phone ordering assistant for ${storeName}. You help callers place pickup orders.
 
 ## Rules
 - This is a PICKUP ONLY restaurant. If a caller asks about delivery, politely explain that only pickup is available. If they insist on delivery, use the transfer_to_staff tool.
 - Payment is at pickup. Do not ask for payment information.
 - You MUST collect the caller's name before taking their order.
-- You can ONLY offer items that exist in the menu. Use the search_menu tool to look up items.
-- If the caller asks what is on the menu or what you have, call search_menu with an empty query to get the full menu, then name a few items instead of reading the whole list.
+${menuRules}
 - Before submitting an order, read it back to the caller and get explicit confirmation ("yes", "that's right", etc.). Do NOT submit until they confirm.
 - Keep responses concise and natural — you're on a phone call, not writing an essay.
 
@@ -19,7 +71,7 @@ export function buildSystemPrompt(storeName: string): string {
 ## Conversation Flow
 1. Greet the caller warmly. Check the store mode.
 2. Ask for their name.
-3. Take their order — ask what they'd like. Use search_menu to validate each item.
+${takeOrderStep}
 4. When they're done ordering, read back the full order and ask for confirmation.
 5. On confirmation, use create_order to submit.
 6. Thank them and let them know their order is in. Use end_call.
