@@ -25,10 +25,10 @@ function required(name) {
 const apiKey = required('ELEVENLABS_API_KEY');
 const internalApiKey = required('INTERNAL_API_KEY');
 const orderApi = required('ORDER_API_BASE_URL').replace(/\/$/, '');
-const storeId = env.STORE_ID ?? 'store-1';
-const storeName = env.STORE_NAME ?? 'Mei Test Kitchen';
-const agentName = env.ELEVENLABS_AGENT_NAME ?? 'mei.ai test';
-const secretName = env.ELEVENLABS_SECRET_NAME ?? 'mei_ai_test_order_api_key';
+const storeId = env.STORE_ID || 'store-1';
+const storeName = env.STORE_NAME || 'Mei Test Kitchen';
+const agentName = env.ELEVENLABS_AGENT_NAME || 'mei.ai test';
+const secretName = env.ELEVENLABS_SECRET_NAME || 'mei_ai_test_order_api_key';
 
 async function call(method, path, body) {
   const res = await fetch(`${API}${path}`, {
