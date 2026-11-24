@@ -5,13 +5,16 @@ import { OrderService } from './orderService.js';
 import { priceMenuOrder, MenuOrderError } from './menuOrder.js';
 import type { OrderStatus, StoreMode } from './types.js';
 import { safeLog } from './logger.js';
+import { oneLine } from './text.js';
 import { createRepository } from './store/factory.js';
+import { createChangeRulesSource } from './store/changeRules.js';
 import { asyncRoute } from './http/asyncRoute.js';
 import { errorMiddleware } from './http/errorMiddleware.js';
 import { AuthService } from './auth/service.js';
 import { authenticateRequest, requireRole } from './auth/middleware.js';
 import { validateRuntimeSecurityConfig } from './auth/config.js';
 import type { RealtimeFanout } from './realtime/gateway.js';
+import type { OrderNotifier } from './notify/orderNotifier.js';
 
 const statusSchema = z.enum(['NEW', 'ACCEPTED', 'IN_PROGRESS', 'READY', 'COMPLETED', 'REJECTED', 'CANCELED']);
 const modeSchema = z.enum(['OPEN', 'BUSY', 'CLOSED']);
@@ -58,6 +61,8 @@ const patchOrderSchema = z
 
 interface CreateAppOptions {
   realtimeGateway?: RealtimeFanout;
+  /** Told about each new order placed by a phone agent. */
+  orderNotifier?: OrderNotifier;
 }
 
 interface LimiterOptions {
@@ -120,6 +125,8 @@ export function createApp(options: CreateAppOptions = {}) {
   const { repository: db, backend } = createRepository();
   const orderService = new OrderService(db);
   const authService = new AuthService(db);
+  // What callers may change about an order; reread whenever the file changes.
+  const changeRules = createChangeRulesSource(process.env.CHANGE_RULES_FILE);
 
   const loginLimiter = createRateLimiter({
     keyPrefix: 'auth_login',
@@ -443,17 +450,24 @@ export function createApp(options: CreateAppOptions = {}) {
     if (!allowServiceToken(req, res, process.env.INTERNAL_API_KEY, 'x-internal-api-key')) return;
     const storeId = z.string().parse(req.params.storeId);
     const items = await db.getMenu(storeId);
-    const query = typeof req.query.q === 'string' ? req.query.q.toLowerCase() : '';
-    const filtered = query
-      ? items.filter((item) => item.name.toLowerCase().includes(query))
+    // Every word of the query must appear in the item's name or section, so
+    // "chicken fried rice" finds "Chicken Fried Rice (Pint)" in any word order.
+    const words = typeof req.query.q === 'string' ? req.query.q.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean) : [];
+    const filtered = words.length
+      ? items.filter((item) => {
+          const haystack = `${item.name} ${item.category ?? ''}`.toLowerCase();
+          return words.every((word) => haystack.includes(word));
+        })
       : items;
     res.json({
       items: filtered.map((item) => ({
         id: item.id,
         name: item.name,
         price_cents: item.basePriceCents,
-        is_available: item.isAvailable
-      }))
+        is_available: item.isAvailable,
+        ...(item.category ? { category: item.category } : {})
+      })),
+      change_rules: changeRules.get()
     });
   }));
 
@@ -462,15 +476,50 @@ export function createApp(options: CreateAppOptions = {}) {
     if (!isOrderIntakeEnabled()) {
       return res.status(503).json({ error: { code: 'ORDER_INTAKE_DISABLED', message: 'order intake disabled' } });
     }
+    const itemsSchema = z.array(z.object({
+      item_id: z.string().min(1).max(120),
+      qty: z.number().int().positive().max(99),
+      note: z.string().max(300).optional(),
+      options: z.array(z.string().min(1).max(60)).max(12).optional(),
+      swaps: z.array(z.object({
+        out_item_id: z.string().min(1).max(120),
+        in_item_id: z.string().min(1).max(120)
+      })).max(4).optional()
+    })).min(1).max(60);
+
+    // A quote prices the items exactly as an order would and stores nothing,
+    // so an agent can tell the caller a charge before they confirm.
+    const body = req.body as { quote_only?: unknown } | undefined;
+    if (body?.quote_only === true || body?.quote_only === 'true') {
+      const quote = z.object({ store_id: z.string().min(1), items: itemsSchema }).safeParse(req.body);
+      if (!quote.success) return res.status(400).json({ error: quote.error.flatten() });
+      try {
+        const priced = priceMenuOrder(await db.getMenu(quote.data.store_id), quote.data.items, changeRules.get());
+        return res.status(200).json({
+          quote_only: true,
+          total_cents: priced.totalCents,
+          items: priced.items.map((line) => ({
+            item_id: line.itemId,
+            name: line.itemNameSnapshot,
+            qty: line.qty,
+            base_price_cents: line.basePriceCents,
+            charges: line.modifiersSnapshotJson.map((charge) => ({ label: charge.label, price_cents: charge.price_cents })),
+            line_total_cents: line.lineTotalCents
+          }))
+        });
+      } catch (error) {
+        if (error instanceof MenuOrderError) return res.status(400).json({ error: { code: error.code, message: error.message } });
+        throw error;
+      }
+    }
+
     const parsed = z.object({
       store_id: z.string().min(1),
-      call_id: z.string().optional(),
-      customer_name: z.string().min(1),
-      customer_phone: z.string().min(4),
-      items: z.array(z.object({
-        item_id: z.string().min(1),
-        qty: z.number().int().positive()
-      })).min(1)
+      call_id: z.string().max(200).optional(),
+      customer_name: z.string().min(1).max(120),
+      customer_phone: z.string().min(4).max(32),
+      notes: z.string().max(400).optional(),
+      items: itemsSchema
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
@@ -482,12 +531,13 @@ export function createApp(options: CreateAppOptions = {}) {
     });
 
     let priced: ReturnType<typeof priceMenuOrder>;
-    try { priced = priceMenuOrder(await db.getMenu(parsed.data.store_id), parsed.data.items); }
+    try { priced = priceMenuOrder(await db.getMenu(parsed.data.store_id), parsed.data.items, changeRules.get()); }
     catch (error) {
       if (error instanceof MenuOrderError) return res.status(400).json({ error: { code: error.code, message: error.message } });
       throw error;
     }
     const { items: hydratedItems, totalCents } = priced;
+    const orderNote = parsed.data.notes ? oneLine(parsed.data.notes, 240) : '';
 
     const order = await orderService.createOrder({
       storeId: parsed.data.store_id,
@@ -496,6 +546,7 @@ export function createApp(options: CreateAppOptions = {}) {
       customerPhone: parsed.data.customer_phone,
       items: hydratedItems,
       totalCents,
+      ...(orderNote ? { notes: orderNote } : {}),
       ...(parsed.data.call_id ? { callId: parsed.data.call_id } : {})
     });
     res.status(201).json({
@@ -505,6 +556,17 @@ export function createApp(options: CreateAppOptions = {}) {
       total_cents: order.totalCents,
       created_at: order.createdAt
     });
+
+    // Sent after the response and only for a newly created order: a repeated
+    // request for the same call returned above, so it cannot notify twice.
+    if (options.orderNotifier) {
+      const store = await db.getStoreById(order.storeId);
+      void options.orderNotifier.orderCreated(order, {
+        ...(store?.name ? { storeName: store.name } : {}),
+        ...(store?.timezone ? { timezone: store.timezone } : {}),
+        ...(store?.defaultPrepMins ? { prepMins: store.defaultPrepMins } : {})
+      });
+    }
   }));
 
   app.post('/api/internal/call-events', asyncRoute(async (req, res) => {

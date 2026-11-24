@@ -21,6 +21,8 @@ export class CallToolHandler {
           return await this.searchMenu(argsJson);
         case 'create_order':
           return await this.createOrder(argsJson);
+        case 'price_order':
+          return await this.priceOrder(argsJson);
         case 'transfer_to_staff':
           return await this.transferToStaff(argsJson);
         case 'end_call':
@@ -61,7 +63,7 @@ export class CallToolHandler {
       },
       body: JSON.stringify(body)
     });
-    if (!res.ok) throw new Error(`API ${path} returned ${res.status}`);
+    if (!res.ok) throw new Error(`API ${path} returned ${res.status}${await errorDetail(res)}`);
     return res.json();
   }
 
@@ -79,15 +81,33 @@ export class CallToolHandler {
   }
 
   private async createOrder(argsJson: string): Promise<string> {
-    const { customer_name, items } = JSON.parse(argsJson) as {
+    const { customer_name, items, notes } = JSON.parse(argsJson) as {
       customer_name: string;
-      items: Array<{ item_id: string; qty: number }>;
+      items: Array<{
+        item_id: string;
+        qty: number;
+        note?: string;
+        options?: string[];
+        swaps?: Array<{ out_item_id: string; in_item_id: string }>;
+      }>;
+      notes?: string;
     };
     const data = await this.apiPost('/api/internal/orders', {
       store_id: this.config.storeId,
       call_id: this.config.callSid,
       customer_name,
       customer_phone: this.config.callerPhone,
+      items,
+      ...(notes ? { notes } : {})
+    });
+    return JSON.stringify(data);
+  }
+
+  private async priceOrder(argsJson: string): Promise<string> {
+    const { items } = JSON.parse(argsJson) as { items: unknown };
+    const data = await this.apiPost('/api/internal/orders', {
+      store_id: this.config.storeId,
+      quote_only: true,
       items
     });
     return JSON.stringify(data);
@@ -107,5 +127,15 @@ export class CallToolHandler {
   private async endCall(argsJson: string): Promise<string> {
     const { reason } = JSON.parse(argsJson) as { reason: string };
     return JSON.stringify({ status: 'ending', reason });
+  }
+}
+
+/** The server's own reason for refusing a request, so the agent can act on it. */
+async function errorDetail(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { error?: { message?: unknown } };
+    return typeof body.error?.message === 'string' ? `: ${body.error.message.slice(0, 300)}` : '';
+  } catch {
+    return '';
   }
 }

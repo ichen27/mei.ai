@@ -1,5 +1,6 @@
 import express, { type Router } from 'express';
 import { safeLog } from '../../logger.js';
+import type { PromptChangeRules, PromptMenuItem } from '../../workers/call-prompt.js';
 import { CallToolHandler } from '../../workers/call-tools.js';
 import { CallRecorder } from '../call-recorder.js';
 import type { OpenAiSipClient } from './client.js';
@@ -26,6 +27,48 @@ export interface OpenAiSipRouterDeps {
   client: OpenAiSipClient;
   /** Override the order tools; defaults to the internal ordering API. */
   createTools?: (call: IncomingCall) => ToolRunner;
+  /**
+   * Menu to put in the agent's instructions; defaults to the internal ordering
+   * API. Return undefined to leave the menu out and rely on search_menu.
+   */
+  loadMenu?: () => Promise<LoadedMenu | undefined>;
+}
+
+/** The menu and the restaurant's change rules, as the prompt needs them. */
+export interface LoadedMenu {
+  items: PromptMenuItem[];
+  changeRules?: PromptChangeRules;
+}
+
+const MENU_CACHE_MS = 60_000;
+const MENU_TIMEOUT_MS = 2000;
+
+/**
+ * Loads the menu from the internal ordering API, cached briefly so a burst of
+ * calls does not refetch it. A failure never blocks answering the call.
+ */
+export function createMenuLoader(config: OpenAiSipConfig): () => Promise<LoadedMenu | undefined> {
+  let cached: { at: number; menu: LoadedMenu } | undefined;
+  return async () => {
+    if (cached && Date.now() - cached.at < MENU_CACHE_MS) return cached.menu;
+    try {
+      const res = await fetch(`${config.apiBaseUrl}/api/internal/stores/${encodeURIComponent(config.storeId)}/menu`, {
+        headers: { 'x-internal-api-key': config.internalApiKey, Accept: 'application/json' },
+        signal: AbortSignal.timeout(MENU_TIMEOUT_MS)
+      });
+      if (!res.ok) throw new Error(`menu request returned ${res.status}`);
+      const body = (await res.json()) as { items?: PromptMenuItem[]; change_rules?: PromptChangeRules };
+      if (!Array.isArray(body.items)) throw new Error('menu response has no items');
+      cached = {
+        at: Date.now(),
+        menu: { items: body.items, ...(body.change_rules ? { changeRules: body.change_rules } : {}) }
+      };
+      return cached.menu;
+    } catch (err) {
+      safeLog('warn', 'voice_menu_load_failed', { error: err instanceof Error ? err.message : 'unknown' });
+      return cached?.menu;
+    }
+  };
 }
 
 function sipHeaders(data: Record<string, unknown>): Array<{ name: string; value: string }> {
@@ -102,6 +145,8 @@ export function createOpenAiSipRouter(deps: OpenAiSipRouterDeps): {
         callSid: call.id
       }));
 
+  const loadMenu = deps.loadMenu ?? createMenuLoader(config);
+
   async function answer(call: IncomingCall): Promise<void> {
     const recorder = new CallRecorder(`openai-${call.mode}`, call.id, config.recordDir);
     recorder.note('incoming', {
@@ -121,12 +166,19 @@ export function createOpenAiSipRouter(deps: OpenAiSipRouterDeps): {
     activeCalls.set(call.id, session);
     const startedAt = Date.now();
     try {
+      const menu = await loadMenu();
       await client.accept(
         call.mode,
         call.id,
-        call.mode === 'live' ? buildLiveAcceptBody(config) : buildRealtimeAcceptBody(config)
+        call.mode === 'live'
+          ? buildLiveAcceptBody(config, menu?.items, menu?.changeRules)
+          : buildRealtimeAcceptBody(config, menu?.items, menu?.changeRules)
       );
-      recorder.note('accepted', { ms: Date.now() - startedAt });
+      recorder.note('accepted', {
+        ms: Date.now() - startedAt,
+        menu_items: menu?.items.length ?? 0,
+        change_rules: menu?.changeRules?.rules.length ?? 0
+      });
       await session.start();
       safeLog('info', 'voice_call_started', { provider: `openai-${call.mode}`, callId: call.id });
     } catch (err) {

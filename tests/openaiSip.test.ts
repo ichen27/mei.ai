@@ -14,6 +14,7 @@ import {
 import { createOpenAiSipRouter, parseIncomingCall, resolveMode } from '../src/voice/openai-sip/router.js';
 import { SipCallSession } from '../src/voice/openai-sip/session.js';
 import { verifyWebhook } from '../src/voice/openai-sip/webhook.js';
+import type { PromptMenuItem } from '../src/workers/call-prompt.js';
 
 const SECRET = 'whsec_' + Buffer.from('test-signing-key').toString('base64');
 
@@ -105,7 +106,7 @@ describe('accept bodies', () => {
     expect(body.session.model).toBe('gpt-live-1.1');
     expect(body.session.instructions).toContain('Golden Wok');
     expect(body.session.delegation.type).toBe('responses');
-    expect(body.session.delegation.responses.tools).toHaveLength(5);
+    expect(body.session.delegation.responses.tools).toHaveLength(6);
     expect(body.session.delegation.responses.instructions).toContain('PICKUP ONLY');
   });
 
@@ -119,7 +120,37 @@ describe('accept bodies', () => {
     expect(body.type).toBe('realtime');
     expect(body.model).toBe('gpt-realtime-2.1');
     expect(body.instructions).toContain('Golden Wok');
-    expect(body.tools).toHaveLength(5);
+    expect(body.tools).toHaveLength(6);
+  });
+
+  it('puts the menu in both GPT-Live models and in Realtime when one is given', () => {
+    const menu: PromptMenuItem[] = [
+      { id: 'soup-1', name: 'Wonton Soup (Pint)', price_cents: 395, category: 'Soup' },
+      { id: 'soup-2', name: 'Egg Drop Soup (Pint)', price_cents: 375, category: 'Soup', is_available: false }
+    ];
+    const live = buildLiveAcceptBody(config(), menu) as {
+      session: { instructions: string; delegation: { responses: { instructions: string } } };
+    };
+    for (const text of [live.session.instructions, live.session.delegation.responses.instructions]) {
+      expect(text).toContain('Wonton Soup (Pint) | $3.95 | id: soup-1');
+      expect(text).not.toContain('Egg Drop Soup');
+    }
+    expect(live.session.instructions).toContain('Answer menu questions yourself');
+    const realtime = buildRealtimeAcceptBody(config(), menu) as { instructions: string };
+    expect(realtime.instructions).toContain('id: soup-1');
+  });
+});
+
+describe('readOpenAiSipConfig secrets', () => {
+  it('reads a key from the file named by NAME_FILE when NAME is unset', async () => {
+    const { mkdtempSync, writeFileSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const file = join(mkdtempSync(join(tmpdir(), 'mei-key-')), 'key');
+    writeFileSync(file, 'sk-from-file\n');
+    expect(readOpenAiSipConfig({ OPENAI_API_KEY_FILE: file }, 3000).apiKey).toBe('sk-from-file');
+    expect(readOpenAiSipConfig({ OPENAI_API_KEY: 'sk-direct', OPENAI_API_KEY_FILE: file }, 3000).apiKey).toBe('sk-direct');
+    expect(readOpenAiSipConfig({ OPENAI_API_KEY_FILE: join(file, 'missing') }, 3000).apiKey).toBe('');
   });
 });
 
@@ -153,12 +184,13 @@ describe('incoming call parsing', () => {
 });
 
 describe('webhook route', () => {
-  function app(cfg = config(), fake = fakeClient()) {
+  function app(cfg = config(), fake = fakeClient(), menu?: PromptMenuItem[]) {
     const tools = { execute: vi.fn(async () => '{"ok":true}') };
     const { router, activeCalls } = createOpenAiSipRouter({
       config: cfg,
       client: fake.client,
-      createTools: () => tools
+      createTools: () => tools,
+      loadMenu: async () => (menu ? { items: menu } : undefined)
     });
     const server = express();
     server.use('/api/webhooks/openai', router);
@@ -176,6 +208,16 @@ describe('webhook route', () => {
     expect(second.body.duplicate).toBe(true);
     expect(fake.calls).toEqual(['accept:live:live_123']);
     expect(fake.client.attach).toHaveBeenCalledTimes(1);
+  });
+
+  it('answers with the loaded menu in the instructions', async () => {
+    const menu: PromptMenuItem[] = [{ id: 'rice-1', name: 'Pork Fried Rice (Quart)', price_cents: 1095 }];
+    const { server, fake } = app(config(), fakeClient(), menu);
+    const body = liveIncoming();
+    await request(server).post('/api/webhooks/openai').set(sign(body)).type('json').send(body);
+    await tick();
+    const accepted = vi.mocked(fake.client.accept).mock.calls[0]?.[2] as { session: { instructions: string } };
+    expect(accepted.session.instructions).toContain('id: rice-1');
   });
 
   it('rejects an unsigned request without answering', async () => {

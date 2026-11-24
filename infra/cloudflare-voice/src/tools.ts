@@ -28,7 +28,8 @@ export class OrderTools {
             call_id: this.callId,
             customer_name: args.customer_name,
             customer_phone: this.callerPhone,
-            items: args.items
+            items: args.items,
+            ...(typeof args.notes === 'string' && args.notes ? { notes: args.notes } : {})
           });
         case 'transfer_to_staff':
           return JSON.stringify({

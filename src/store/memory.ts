@@ -2,6 +2,7 @@ import type { CallSession, MenuItem, Order, OrderEvent, OrderStatus, OutboxEvent
 import type { AppRepository, CreateOrderInput, OutboxPublishResult, UpdateOrderStatusInput } from './repository.js';
 import { configuredUsers } from '../auth/config.js';
 import type { AuthCredentialRecord } from '../auth/types.js';
+import type { MenuSeed } from './menuFile.js';
 
 const STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   NEW: ['ACCEPTED', 'REJECTED', 'CANCELED'],
@@ -45,6 +46,19 @@ export class MemoryStore implements AppRepository {
   private readonly authUsers = new Map<string, AuthCredentialRecord>(
     configuredUsers().map((user) => [`${user.storeId}:${user.email.toLowerCase()}`, user])
   );
+
+  /** With a seed, the built-in sample menu is replaced by the seed's items. */
+  constructor(seed?: MenuSeed) {
+    if (!seed) return;
+    const store = this.stores.get('store-1');
+    if (store) {
+      if (seed.store.name) store.name = seed.store.name;
+      if (seed.store.publicPhone) store.publicPhone = seed.store.publicPhone;
+      if (seed.store.timezone) store.timezone = seed.store.timezone;
+    }
+    this.menuItems.clear();
+    for (const item of seed.items) this.menuItems.set(item.id, { ...item });
+  }
 
   async getStoreById(storeId: string): Promise<Store | undefined> {
     return this.stores.get(storeId);

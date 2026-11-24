@@ -33,7 +33,7 @@ describe('CallSession', () => {
     expect(msg.type).toBe('session.update');
     expect(msg.session.model).toBe('gpt-4o-realtime-preview');
     expect(msg.session.voice).toBe('alloy');
-    expect(msg.session.tools).toHaveLength(5);
+    expect(msg.session.tools).toHaveLength(6);
     expect(msg.session.instructions).toContain('Test Store');
     expect(msg.session.input_audio_format).toBe('pcm16');
     expect(msg.session.output_audio_format).toBe('pcm16');

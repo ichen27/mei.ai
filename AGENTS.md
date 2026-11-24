@@ -192,3 +192,13 @@ If multiple valid approaches exist, present 2–3 options with a recommendation.
 - build: `npm run build`
 - run (local): `npm run dev`
 - ci: `npm run ci`
+
+## Shipping decisions
+
+Recorded 2026-11-24.
+
+- **App launcher:** yes. The order service and staff dashboard run as one launcher app named "mei.ai" (id `mei-ai`). The launcher manifest and environment file hold machine paths and secrets and are kept out of the repository.
+- **Repository visibility:** public.
+- **Name:** mei.ai, a brand name, used on GitHub and the launcher.
+- **Announcement:** not decided.
+- **Restaurant menu:** the real restaurant's menu is loaded at run time through `MENU_FILE` and is not committed. `data/menu.example.json` is an invented sample.

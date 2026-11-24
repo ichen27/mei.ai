@@ -49,6 +49,25 @@ Open **[localhost:4173](http://localhost:4173)**.
 
 Every visitor gets a separate, temporary workspace. “Reset demo” restores the sample data. Conversations are simulated; order creation, validation, status transitions, session isolation, and event delivery run on the server.
 
+### Run the staff dashboard with your own menu
+
+The demo above uses a sample menu and simulated calls. To run the real order service, with a staff dashboard that phone agents send orders to:
+
+```bash
+npm ci && npm --prefix apps/staff-web ci
+npm run build && npm run staff:web:build
+MENU_FILE=data/menu.example.json INTERNAL_API_KEY=change-me-please npm start
+```
+
+Open **[localhost:3000/staff](http://localhost:3000/staff)** and sign in. Outside production the sample logins in `src/auth/config.ts` work; in production set `AUTH_USERS_JSON`, `JWT_SECRET` and `NODE_ENV=production`.
+
+- **Menu file.** `MENU_FILE` points at a JSON file in the shape of [`data/menu.example.json`](data/menu.example.json): one entry per orderable thing, so each size or style ("Pint", "Quart", "Steamed") is its own item with its own id and price. A bad file stops startup. Without `MENU_FILE` the two-item sample menu is used.
+- **Menu in the agent's context.** The phone agents get the whole menu in their instructions, grouped by section, so they can answer "what do you have?" without a lookup. Prices and totals still come from the server when the order is created.
+- **Orders are kept in memory** unless `STORE_BACKEND=postgres` is set, so they are lost when the process restarts.
+- **What callers can change.** `CHANGE_RULES_FILE` points at a JSON file in the shape of [`data/change-rules.example.json`](data/change-rules.example.json). Each rule covers any item, some menu sections, or some items, and lists changes that are allowed (free or with a price) and changes that are not. The agents get the rules in their instructions. An allowed change is ordered by its id, and the server checks it applies to that item and adds its price, so the model never sets a charge. A rule can also carry `guidance`: the restaurant's own sentences for open-ended requests, such as leaving an ingredient out or swapping a side, which a fixed list cannot cover. The agent follows them and writes the change in the item's note; guidance does not change the price. A rule can also price swaps: `comes_with` lists the menu item ids its items come with, and `swap_sections` the sections a replacement may come from. The server charges the new item's menu price minus the old one's (nothing when the new one is not dearer). Only something on the `comes_with` list can come out, each once, so a caller cannot name a dear item as the thing replaced. Agents get the exact charge from the `price_order` tool, which prices items without placing an order. `unlisted_requests` decides whether a request no rule mentions is passed to the kitchen as a note or declined. The file is reread when it changes, so edits apply to the next call without a restart; an edit that leaves it invalid is logged and the last good rules stay in force.
+- **Order texts.** On a Mac, set `ORDER_NOTIFY_IMESSAGE_TO` to a phone number or Apple ID and each new phone order is also sent as an iMessage from that Mac's Messages app, which must be signed in. macOS asks once for permission to let the server control Messages; until that is allowed, sends time out and are logged as `order_notify_failed`. A failed text never blocks the order.
+- **Other settings.** `HOST` limits the listening interface. `OPENAI_API_KEY_FILE` and `OPENAI_WEBHOOK_SECRET_FILE` read those keys from files instead of the environment.
+
 ## Walkthrough
 
 ![Recorded product walkthrough: call, confirmation, order board, and menu controls](docs/images/walkthrough.gif)

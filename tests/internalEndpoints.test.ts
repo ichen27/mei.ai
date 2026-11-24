@@ -53,6 +53,19 @@ describe('internal call endpoints', () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('items');
     });
+
+    it('matches every word of the query in any order', async () => {
+      const find = async (q: string) => {
+        const res = await request(app)
+          .get('/api/internal/stores/store-1/menu')
+          .query({ q })
+          .set('x-internal-api-key', 'test-internal-key');
+        return (res.body.items as Array<{ name: string }>).map((item) => item.name);
+      };
+      expect(await find('burrito chicken')).toEqual(['Chicken Burrito']);
+      expect(await find('chicken bowl')).toEqual([]);
+      expect(await find('menu')).toEqual([]);
+    });
   });
 
   describe('POST /api/internal/orders', () => {
