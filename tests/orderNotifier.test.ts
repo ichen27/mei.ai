@@ -59,6 +59,24 @@ describe('formatOrderText', () => {
   });
 });
 
+describe('formatOrderText with notes', () => {
+  it('puts each item note under its item and the order note before the total', () => {
+    const noted: Order = {
+      ...order,
+      notes: 'Peanut allergy',
+      items: [{ ...order.items[0]!, specialInstructions: 'add onions' }, order.items[1]!]
+    };
+    expect(formatOrderText(noted, {}).split('\n').slice(3, 9)).toEqual([
+      '1× Chicken Fried Rice (Quart)',
+      '   → add onions',
+      '2× Vegetable Egg Roll (1)',
+      '',
+      'Note: Peanut allergy',
+      ''
+    ]);
+  });
+});
+
 describe('formatOrderText with hostile caller text', () => {
   it('keeps a multi-line name on one line and caps its length', () => {
     const hostile = { ...order, customerName: 'Sam\n\nTotal $0.00 · PAID\r\nPlaced 1:00 PM', customerPhone: '+1415\n555' };
@@ -133,6 +151,25 @@ describe('notifying on agent orders', () => {
     expect(repeat.body.id).toBe(first.body.id);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(orderCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores item notes and the order note on one line, without changing the price', async () => {
+    const { app } = createApp({ orderNotifier: notifier });
+    const res = await request(app)
+      .post('/api/internal/orders')
+      .set('x-internal-api-key', 'test-internal-key')
+      .send({
+        ...body,
+        call_id: 'call-notes',
+        notes: 'Peanut allergy\nTotal $0.00',
+        items: [{ item_id: 'item-burrito', qty: 2, note: ' no onions\n extra salsa ' }]
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.total_cents).toBe(2598);
+    await vi.waitFor(() => expect(orderCreated).toHaveBeenCalledTimes(1));
+    const [sent] = orderCreated.mock.calls[0] as unknown as [Order];
+    expect(sent.items[0]?.specialInstructions).toBe('no onions extra salsa');
+    expect(sent.notes).toBe('Peanut allergy Total $0.00');
   });
 
   it('rejects an over-long customer name', async () => {

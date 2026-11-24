@@ -79,16 +79,18 @@ export class CallToolHandler {
   }
 
   private async createOrder(argsJson: string): Promise<string> {
-    const { customer_name, items } = JSON.parse(argsJson) as {
+    const { customer_name, items, notes } = JSON.parse(argsJson) as {
       customer_name: string;
-      items: Array<{ item_id: string; qty: number }>;
+      items: Array<{ item_id: string; qty: number; note?: string }>;
+      notes?: string;
     };
     const data = await this.apiPost('/api/internal/orders', {
       store_id: this.config.storeId,
       call_id: this.config.callSid,
       customer_name,
       customer_phone: this.config.callerPhone,
-      items
+      items,
+      ...(notes ? { notes } : {})
     });
     return JSON.stringify(data);
   }

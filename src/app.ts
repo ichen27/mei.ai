@@ -5,6 +5,7 @@ import { OrderService } from './orderService.js';
 import { priceMenuOrder, MenuOrderError } from './menuOrder.js';
 import type { OrderStatus, StoreMode } from './types.js';
 import { safeLog } from './logger.js';
+import { oneLine } from './text.js';
 import { createRepository } from './store/factory.js';
 import { asyncRoute } from './http/asyncRoute.js';
 import { errorMiddleware } from './http/errorMiddleware.js';
@@ -476,9 +477,11 @@ export function createApp(options: CreateAppOptions = {}) {
       call_id: z.string().max(200).optional(),
       customer_name: z.string().min(1).max(120),
       customer_phone: z.string().min(4).max(32),
+      notes: z.string().max(400).optional(),
       items: z.array(z.object({
         item_id: z.string().min(1).max(120),
-        qty: z.number().int().positive().max(99)
+        qty: z.number().int().positive().max(99),
+        note: z.string().max(300).optional()
       })).min(1).max(60)
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -497,6 +500,7 @@ export function createApp(options: CreateAppOptions = {}) {
       throw error;
     }
     const { items: hydratedItems, totalCents } = priced;
+    const orderNote = parsed.data.notes ? oneLine(parsed.data.notes, 240) : '';
 
     const order = await orderService.createOrder({
       storeId: parsed.data.store_id,
@@ -505,6 +509,7 @@ export function createApp(options: CreateAppOptions = {}) {
       customerPhone: parsed.data.customer_phone,
       items: hydratedItems,
       totalCents,
+      ...(orderNote ? { notes: orderNote } : {}),
       ...(parsed.data.call_id ? { callId: parsed.data.call_id } : {})
     });
     res.status(201).json({

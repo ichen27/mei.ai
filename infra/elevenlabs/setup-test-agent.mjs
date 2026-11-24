@@ -106,10 +106,19 @@ function toolConfigs(secretId) {
                 description: 'One line of the order.',
                 required: ['item_id', 'qty'],
                 properties: {
-                  item_id: { type: 'string', description: 'Menu item id from search_menu results.' },
-                  qty: { type: 'integer', description: 'Quantity ordered.' }
+                  item_id: { type: 'string', description: 'Menu item id from the menu or search_menu results.' },
+                  qty: { type: 'integer', description: 'Quantity ordered.' },
+                  note: {
+                    type: 'string',
+                    description:
+                      "The caller's requested change to this item, in a few words for the kitchen, e.g. no onions, extra spicy. Leave empty when there is none."
+                  }
                 }
               }
+            },
+            notes: {
+              type: 'string',
+              description: 'A request about the whole order, e.g. extra napkins or an allergy. Leave empty when there is none.'
             }
           }
         }

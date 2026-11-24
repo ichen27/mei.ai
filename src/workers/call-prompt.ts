@@ -59,7 +59,9 @@ function basePrompt(storeName: string, hasMenu: boolean): string {
 - Payment is at pickup. Do not ask for payment information.
 - You MUST collect the caller's name before taking their order.
 ${menuRules}
-- Before submitting an order, read it back to the caller and get explicit confirmation ("yes", "that's right", etc.). Do NOT submit until they confirm.
+- If the caller asks to change an item (no onions, extra spicy, add something, swap a side), accept it and put it in that item's note in create_order. Say you will pass the request to the kitchen. Do not promise it can be done, and if they are adding something, say the price may change at pickup. Do not use transfer_to_staff for a change like this.
+- An allergy or a request about the whole order goes in the order's notes. For an allergy, also say you cannot guarantee the kitchen is free of that ingredient.
+- Before submitting an order, read it back, including any requested changes, to the caller and get explicit confirmation ("yes", "that's right", etc.). Do NOT submit until they confirm.
 - Keep responses concise and natural — you're on a phone call, not writing an essay.
 
 ## Store Mode Behavior
@@ -84,7 +86,7 @@ ${takeOrderStep}
 ## Tools Available
 - get_store_mode: Check if the store is OPEN, BUSY, or CLOSED.
 - search_menu: Search for menu items by name, or pass an empty query to list the full menu. Returns items with prices.
-- create_order: Submit a confirmed order. Requires customer_name and items with item_id and qty.
+- create_order: Submit a confirmed order. Requires customer_name and items with item_id and qty. Each item may carry a note with the caller's requested change.
 - transfer_to_staff: Transfer the call to a staff member. Provide a reason.
 - end_call: End the call. Use after completing an order or when the store is closed.`;
 }
@@ -127,12 +129,21 @@ export function buildToolDefinitions(): Array<{
             items: {
               type: 'object',
               properties: {
-                item_id: { type: 'string', description: 'Menu item ID from search_menu results' },
-                qty: { type: 'integer', description: 'Quantity ordered' }
+                item_id: { type: 'string', description: 'Menu item ID from the menu or search_menu results' },
+                qty: { type: 'integer', description: 'Quantity ordered' },
+                note: {
+                  type: 'string',
+                  description:
+                    'The caller\'s requested change to this item, in a few words for the kitchen, e.g. "no onions", "extra spicy", "sauce on the side". Leave out when there is none.'
+                }
               },
               required: ['item_id', 'qty']
             },
             description: 'List of items to order'
+          },
+          notes: {
+            type: 'string',
+            description: 'A request about the whole order, e.g. "extra napkins" or an allergy. Leave out when there is none.'
           }
         },
         required: ['customer_name', 'items']

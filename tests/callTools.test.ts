@@ -102,6 +102,21 @@ describe('CallToolHandler', () => {
       const parsed = JSON.parse(result);
       expect(parsed.order_number).toBe(42);
     });
+
+    it('passes item notes and the order note through', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ id: 'order-2' }) });
+      await handler.execute(
+        'create_order',
+        JSON.stringify({
+          customer_name: 'Alice',
+          notes: 'Peanut allergy',
+          items: [{ item_id: 'item-1', qty: 1, note: 'no onions' }]
+        })
+      );
+      const sent = JSON.parse((mockFetch.mock.calls.at(-1)?.[1] as { body: string }).body);
+      expect(sent.notes).toBe('Peanut allergy');
+      expect(sent.items).toEqual([{ item_id: 'item-1', qty: 1, note: 'no onions' }]);
+    });
   });
 
   describe('unknown tool', () => {

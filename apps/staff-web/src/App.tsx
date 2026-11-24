@@ -25,7 +25,7 @@ interface Order {
   rejectReason?: string;
   ackedClientIds: string[];
   /** What was ordered, so the card is readable without opening Details. */
-  items: Array<{ name: string; qty: number }>;
+  items: Array<{ name: string; qty: number; note?: string }>;
 }
 
 interface OrderDetail {
@@ -260,10 +260,12 @@ export function App() {
                     {order.items.map((item, index) => (
                       <li key={`${order.id}-${index}`}>
                         <strong>{item.qty}×</strong> {item.name}
+                        {item.note ? <div className="order-note">→ {item.note}</div> : null}
                       </li>
                     ))}
                   </ul>
                 ) : null}
+                {order.notes ? <p className="order-note">Note: {order.notes}</p> : null}
                 <p>${(order.totalCents / 100).toFixed(2)}</p>
                 <p>{new Date(order.createdAt).toLocaleTimeString()}</p>
                 <div className="row">
@@ -503,7 +505,8 @@ async function loadOrders(
     ackedClientIds: (order.ackedClientIds as string[]) ?? [],
     items: (Array.isArray(order.items) ? (order.items as Array<Record<string, unknown>>) : []).map((item) => ({
       name: String(item.itemNameSnapshot ?? item.itemId ?? ''),
-      qty: Number(item.qty ?? 1)
+      qty: Number(item.qty ?? 1),
+      note: typeof item.specialInstructions === 'string' ? item.specialInstructions : undefined
     }))
   }));
   setOrders(mapped);

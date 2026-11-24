@@ -1,6 +1,9 @@
 import { execFile } from 'node:child_process';
 import { safeLog } from '../logger.js';
+import { oneLine } from '../text.js';
 import type { Order } from '../types.js';
+
+export { oneLine };
 
 /** Tells someone that a new order has arrived. Must not throw. */
 export interface OrderNotifier {
@@ -17,19 +20,6 @@ function dollars(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-/**
- * Caller-supplied text on one line: the name is whatever the caller said, so
- * line breaks and control characters are removed and the length is capped.
- * Otherwise a "name" could add its own lines to the message, such as a total.
- */
-export function oneLine(value: string, max: number): string {
-  const cleaned = value
-    .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cleaned.length > max ? `${cleaned.slice(0, max - 1)}…` : cleaned;
-}
-
 /** The order as a short text message: who, what, how much, when. */
 export function formatOrderText(order: Order, context: OrderNotifyContext = {}): string {
   const placed = new Date(order.createdAt).toLocaleTimeString('en-US', {
@@ -41,7 +31,11 @@ export function formatOrderText(order: Order, context: OrderNotifyContext = {}):
     `New pickup order #${order.orderNumber}${context.storeName ? ` · ${oneLine(context.storeName, 60)}` : ''}`,
     `${oneLine(order.customerName, 60)} · ${oneLine(order.customerPhone, 24)}`,
     '',
-    ...order.items.map((item) => `${item.qty}× ${oneLine(item.itemNameSnapshot, 80)}`),
+    ...order.items.flatMap((item) => [
+      `${item.qty}× ${oneLine(item.itemNameSnapshot, 80)}`,
+      ...(item.specialInstructions ? [`   → ${oneLine(item.specialInstructions, 140)}`] : [])
+    ]),
+    ...(order.notes ? ['', `Note: ${oneLine(order.notes, 240)}`] : []),
     '',
     `Total ${dollars(order.totalCents)} · pay at pickup`,
     `Placed ${placed}${context.prepMins ? ` · ready in about ${context.prepMins} min` : ''}`
