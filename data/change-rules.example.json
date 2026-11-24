@@ -22,8 +22,7 @@
         "Splitting one dish into two sauces"
       ],
       "guidance": [
-        "Leaving out an ingredient (no mushrooms, no peanuts): allowed, no charge.",
-        "Swapping one side for another: allowed. No charge when the two cost the same; if the new one costs more, the caller pays the difference and the restaurant confirms the amount at pickup."
+        "Leaving out an ingredient (no mushrooms, no peanuts): allowed, no charge."
       ]
     },
     {
@@ -45,6 +44,10 @@
       ],
       "cannot_change": [
         "Brown rice instead of white"
+      ],
+      "swap_sections": [
+        "Fried Rice",
+        "Lo Mein"
       ]
     },
     {

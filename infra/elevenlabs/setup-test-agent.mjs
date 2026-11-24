@@ -113,6 +113,20 @@ function toolConfigs(secretId) {
                     description: 'Option ids for this item from the "Changes callers can ask for" section. Leave empty when there are none.',
                     items: { type: 'string', description: 'One option id.' }
                   },
+                  swaps: {
+                    type: 'array',
+                    description:
+                      'Swaps of one menu item for another on this item, only where the "Changes callers can ask for" section lists swaps. Leave empty when there are none.',
+                    items: {
+                      type: 'object',
+                      description: 'One swap.',
+                      required: ['out_item_id', 'in_item_id'],
+                      properties: {
+                        out_item_id: { type: 'string', description: 'Menu item id of what comes out.' },
+                        in_item_id: { type: 'string', description: 'Menu item id of what goes in, in the same size.' }
+                      }
+                    }
+                  },
                   note: {
                     type: 'string',
                     description:

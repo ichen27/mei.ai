@@ -486,7 +486,11 @@ export function createApp(options: CreateAppOptions = {}) {
         item_id: z.string().min(1).max(120),
         qty: z.number().int().positive().max(99),
         note: z.string().max(300).optional(),
-        options: z.array(z.string().min(1).max(60)).max(12).optional()
+        options: z.array(z.string().min(1).max(60)).max(12).optional(),
+        swaps: z.array(z.object({
+          out_item_id: z.string().min(1).max(120),
+          in_item_id: z.string().min(1).max(120)
+        })).max(4).optional()
       })).min(1).max(60)
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });

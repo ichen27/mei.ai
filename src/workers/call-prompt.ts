@@ -47,6 +47,7 @@ export interface PromptChangeRules {
     can_change: Array<{ id: string; label: string; price_cents?: number | undefined }>;
     cannot_change: string[];
     guidance?: string[] | undefined;
+    swap_sections?: string[] | undefined;
   }>;
 }
 
@@ -74,9 +75,13 @@ export function buildChangeRulesSection(rules: PromptChangeRules | undefined, me
     );
     const refused = rule.cannot_change.map((text) => `- ${text}`);
     const guidance = (rule.guidance ?? []).map((text) => `- ${text}`);
+    const swapSections = rule.swap_sections ?? [];
     return [
       `### ${scope}`,
       ...(allowed.length ? ['Allowed:', ...allowed] : []),
+      ...(swapSections.length
+        ? ['Swaps:', `- One menu item for another, when both are in these sections: ${swapSections.join(', ')}.`]
+        : []),
       ...(guidance.length ? ['Guidance:', ...guidance] : []),
       ...(refused.length ? ['Not allowed:', ...refused] : [])
     ].join('\n');
@@ -85,12 +90,16 @@ export function buildChangeRulesSection(rules: PromptChangeRules | undefined, me
     rules.unlisted_requests === 'decline'
       ? '- A request that is not listed here: say politely that the kitchen cannot take that change over the phone. Do not put it in a note.'
       : '- A request that is not listed here: accept it, put it in that item\'s note, and say you will pass it to the kitchen. Do not promise it can be done. If it adds something or swaps something in, say there may be an extra charge that the restaurant confirms at pickup.';
+  const swapLine = rules.rules.some((rule) => (rule.swap_sections ?? []).length > 0)
+    ? `- A swap listed under "Swaps": add it to that item's "swaps" in create_order, with out_item_id (the menu item that comes out) and in_item_id (the menu item that goes in). Use the same size for both. The system charges the new item's menu price minus the old one's when the new one costs more, and nothing otherwise. Work that amount out from the menu and tell the caller before you place the order. Do not also write the swap in the note. A swap that is not between two menu items is a request that is not listed here.
+`
+    : '';
   return `
 
 ## Changes callers can ask for
 The restaurant set these rules. Follow them exactly.
 - An allowed change: add its option id to that item's "options" in create_order. The system adds any charge. Tell the caller the extra cost when there is one.
-- A "Guidance" line is the restaurant's own instruction for that kind of request. Follow it. A change it allows has no option id, so write it in that item's note in a few words for the kitchen.
+${swapLine}- A "Guidance" line is the restaurant's own instruction for that kind of request. Follow it. A change it allows has no option id, so write it in that item's note in a few words for the kitchen.
 - A change marked not allowed: say politely that it is not available. Do not put it in a note and do not offer a workaround.
 ${unlisted}
 - A rule for an item overrides a rule for its section, which overrides a rule for any item.
@@ -199,6 +208,19 @@ export function buildToolDefinitions(): Array<{
                   items: { type: 'string' },
                   description:
                     'Option ids for this item, taken from the "Changes callers can ask for" section. Use these for listed changes. Leave out when there are none.'
+                },
+                swaps: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      out_item_id: { type: 'string', description: 'Menu item ID of what comes out' },
+                      in_item_id: { type: 'string', description: 'Menu item ID of what goes in, in the same size' }
+                    },
+                    required: ['out_item_id', 'in_item_id']
+                  },
+                  description:
+                    'Swaps of one menu item for another on this item, only where the "Changes callers can ask for" section lists swaps. Leave out when there are none.'
                 },
                 note: {
                   type: 'string',
