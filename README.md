@@ -6,7 +6,7 @@
 
 A restaurant ordering workspace with a voice-agent integration, menu validation, and a real-time staff dashboard.
 
-[Try it locally](#try-the-product) · [Watch the walkthrough](#walkthrough) · [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOYMENT.md)
+[Try it locally](#try-the-product) · [Watch the walkthrough](#walkthrough) · [Voice provider evaluation](#voice-provider-evaluation) · [Architecture](docs/ARCHITECTURE.md) · [Deployment](docs/DEPLOYMENT.md)
 
 </div>
 
@@ -104,6 +104,64 @@ flowchart LR
 
 [Read the architecture and tradeoffs →](docs/ARCHITECTURE.md)
 
+## Voice provider evaluation
+
+I put four voice stacks behind the same phone number and placed real calls to each one. Every stack got the same system prompt, the same three order tools (store status, menu search, create order), and the same scripted order: one chicken burrito, give a name, decline extras, confirm.
+
+**Status: a first hands-on pass, not a benchmark.** Nine calls in total, one caller, one mobile phone, English only, a two-item sample menu. Treat the numbers as observations.
+
+### Result
+
+| Stack | How the call reaches it | Calls | Order completed | Greeting | Ends the call itself |
+| --- | --- | --- | --- | --- | --- |
+| OpenAI GPT-Live (`gpt-live-1.1`, tools delegated to a backend model) | SIP from the carrier to OpenAI | 3 | 1 | Clean on the two calls that connected | No |
+| OpenAI Realtime (`gpt-realtime-2.1`, default session settings) | SIP from the carrier to OpenAI | 3 | 1 | Cut itself off on every call | Yes |
+| ElevenLabs Agents (Gemini 3.5 Flash, Turbo v2 speech) | SIP trunk from the carrier to ElevenLabs | 2 | 1 | Clean | Yes |
+| Cloudflare Agents voice (Flux speech-to-text, `gpt-oss-120b`, Aura 2 speech) | Carrier audio stream into a Worker | 1 | 0 | Never played | n/a |
+
+Timing and cost on each stack's completed call (65 to 75 seconds long):
+
+| Stack | Caller stops to agent starts, plain turns | "Yes, correct" to "your order is placed" | Approximate cost of the call |
+| --- | --- | --- | --- |
+| GPT-Live | 0.4 to 0.8 s ¹ | about 7 s, with filler speech | $0.06 session, plus about 13,600 backend input tokens |
+| Realtime | 0.5 to 1.2 s ¹ | 4.4 s, with filler speech | about $0.11 audio, plus text tokens |
+| ElevenLabs | 1.2 to 1.9 s ² | 2.6 s, silent | about $0.09 platform, plus $0.03 model |
+
+¹ Measured by this repo's recorder from transcript events, which run optimistic. ² Measured by ElevenLabs at the audio level. The two methods are not directly comparable. Costs come from each provider's reported usage and list prices, exclude the carrier (about $0.006 for a two-minute call), and were not checked against an invoice.
+
+### What went wrong, and whose fault it was
+
+Six of the nine calls did not end in an order. Most of those failures were mine, not the provider's.
+
+| Call | What the caller experienced | Cause |
+| --- | --- | --- |
+| GPT-Live, first call | "I'm having trouble pulling up the menu" | **This repo.** Menu search matched item names only, so searching for "menu" returned nothing. Fixed: an empty search lists the menu. |
+| GPT-Live, third call | Silence; OpenAI closed the session as expired after 30 s | **Unknown.** The call was accepted and no audio was ever exchanged. |
+| Realtime, all three calls | The agent stops mid-sentence and starts over | **Provider defaults plus line echo.** The agent's own voice came back on the caller's leg and was treated as the caller speaking. One call still finished the order; two did not. Noise reduction and less sensitive speech detection are untested. |
+| ElevenLabs, first call | "I'm having trouble accessing our menu" | **This repo.** The order API behind the tools was down; every tool call returned 502. |
+| Cloudflare | Silence, apart from one short line | **This build.** Replies took 3 to 13 s to prepare and any caller speech cancelled the reply in progress, so the caller's "Hello?" kept cancelling them. |
+
+### What I take from it
+
+- **All three hosted speech stacks can take this order.** The differences showed up in the edges: GPT-Live never hung up, Realtime needs echo handling before it is usable on a phone, and ElevenLabs was the only one that was clean from greeting to hang-up but was also the slowest to start speaking.
+- **Tool design decided more calls than model choice.** Two failed calls came from a search tool the model could not use to answer "what do you have?" and from the tools' backend being down.
+- **A speech-to-text, model, text-to-speech pipeline needs real engineering to be usable.** As built here, the Cloudflare pipeline is too slow for a phone call. A pre-made greeting, sentence-by-sentence speech and a faster model are the obvious next steps, none of them done.
+- **The cheapest line item was the carrier.** Provider cost per one-minute order landed between roughly $0.06 and $0.12 before unverified token charges.
+
+### What this does not cover
+
+Order accuracy on a real menu, modifiers and corrections ("make that two"), background noise, Mandarin or Cantonese, callers other than me, concurrent calls, and transfer to staff. Per-call records are kept locally and not published because they contain caller details.
+
+### Code
+
+| Path | What it is |
+| --- | --- |
+| `src/voice/openai-sip/` | Verifies OpenAI's incoming-call webhook, accepts the call as GPT-Live or Realtime, runs the order tools, and ends or transfers the call |
+| `src/voice/call-recorder.ts` | Per-call record: transcripts, tool timings, response gaps, usage |
+| `infra/elevenlabs/setup-test-agent.mjs` | Creates the ElevenLabs test agent and its three webhook tools |
+| `infra/cloudflare-voice/` | Cloudflare Worker: voice agent plus a carrier audio-stream adapter, with a call simulator in `test/` |
+| `infra/line-check/` | Minimal Worker that answers a call with a spoken confirmation, for testing the carrier leg alone |
+
 ## Stack
 
 | Layer | Technology |
@@ -134,7 +192,7 @@ The test suite covers order retries, menu validation, staff transitions, session
 | **Product demo** | Complete UI, isolated synthetic workspaces, shared order logic, event stream | One container; HTTPS/reverse proxy for a public host |
 | **Voice integration** | Twilio endpoints, audio bridge, model tools, staff API, PostgreSQL/outbox path | Provider accounts, phone routing, secrets, database, staff credentials, and live-call validation |
 
-The product demo is packaged for deployment. The provider-backed phone integration is a separate path and has **not been validated end to end in this release**. Do not route customer calls to it based on the demo checks alone. The demo’s handoff records an event; it does not place a real transfer.
+The product demo is packaged for deployment. The provider-backed phone integration is a separate path. The original Twilio audio bridge targets an OpenAI interface that has since been shut down and is **not validated**. The newer SIP paths have only been exercised on the handful of test calls in the [voice provider evaluation](#voice-provider-evaluation). Do not route customer calls to either based on the demo checks alone. The demo’s handoff records an event; it does not place a real transfer.
 
 [Deployment guide →](docs/DEPLOYMENT.md) · [Environment template](.env.example)
 
