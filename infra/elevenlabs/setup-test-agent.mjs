@@ -108,10 +108,15 @@ function toolConfigs(secretId) {
                 properties: {
                   item_id: { type: 'string', description: 'Menu item id from the menu or search_menu results.' },
                   qty: { type: 'integer', description: 'Quantity ordered.' },
+                  options: {
+                    type: 'array',
+                    description: 'Option ids for this item from the "Changes callers can ask for" section. Leave empty when there are none.',
+                    items: { type: 'string', description: 'One option id.' }
+                  },
                   note: {
                     type: 'string',
                     description:
-                      "The caller's requested change to this item, in a few words for the kitchen, e.g. no onions, extra spicy. Leave empty when there is none."
+                      "A requested change that has no option id, in a few words for the kitchen, e.g. sauce on the side. Leave empty when there is none."
                   }
                 }
               }
@@ -151,8 +156,8 @@ const PROMPT_ADDENDUM = `
 - Use end_call to hang up after the order is placed or when the caller says goodbye.`;
 
 /**
- * The menu goes into the agent's prompt, so it is fixed when this script runs.
- * Run the script again after the menu changes.
+ * The menu and the restaurant's change rules go into the agent's prompt, so
+ * they are fixed when this script runs. Run it again after either changes.
  */
 async function fetchMenu() {
   const res = await fetch(`${orderApi}/api/internal/stores/${storeId}/menu`, {
@@ -161,12 +166,12 @@ async function fetchMenu() {
   if (!res.ok) throw new Error(`menu request returned ${res.status}`);
   const body = await res.json();
   if (!Array.isArray(body.items) || body.items.length === 0) throw new Error('menu is empty');
-  return body.items;
+  return { items: body.items, changeRules: body.change_rules };
 }
 
 function agentBody(toolIds, menu) {
   const prompt = {
-    prompt: buildSystemPrompt(storeName, menu) + PROMPT_ADDENDUM,
+    prompt: buildSystemPrompt(storeName, menu.items, menu.changeRules) + PROMPT_ADDENDUM,
     temperature: 0,
     tool_ids: toolIds,
     built_in_tools: {
@@ -208,5 +213,15 @@ const secretId = await ensureSecret();
 const toolIds = await ensureTools(secretId);
 const agentId = await ensureAgent(toolIds, menu);
 console.log(
-  JSON.stringify({ agent_id: agentId, tool_ids: toolIds, secret_id: secretId, menu_items: menu.length }, null, 2)
+  JSON.stringify(
+    {
+      agent_id: agentId,
+      tool_ids: toolIds,
+      secret_id: secretId,
+      menu_items: menu.items.length,
+      change_rules: menu.changeRules?.rules?.length ?? 0
+    },
+    null,
+    2
+  )
 );

@@ -1,0 +1,63 @@
+{
+  "unlisted_requests": "pass_to_kitchen",
+  "rules": [
+    {
+      "applies_to": "all",
+      "can_change": [
+        {
+          "id": "no-onions",
+          "label": "No onions"
+        },
+        {
+          "id": "extra-spicy",
+          "label": "Extra spicy"
+        },
+        {
+          "id": "sauce-on-side",
+          "label": "Sauce on the side"
+        }
+      ],
+      "cannot_change": [
+        "Half portions",
+        "Splitting one dish into two sauces"
+      ]
+    },
+    {
+      "applies_to": {
+        "categories": [
+          "Fried Rice"
+        ]
+      },
+      "can_change": [
+        {
+          "id": "extra-meat",
+          "label": "Extra meat",
+          "price_cents": 200
+        },
+        {
+          "id": "no-egg",
+          "label": "No egg"
+        }
+      ],
+      "cannot_change": [
+        "Brown rice instead of white"
+      ]
+    },
+    {
+      "applies_to": {
+        "items": [
+          "dumplings-steamed",
+          "dumplings-fried"
+        ]
+      },
+      "can_change": [
+        {
+          "id": "extra-dumpling-sauce",
+          "label": "Extra dumpling sauce",
+          "price_cents": 50
+        }
+      ],
+      "cannot_change": []
+    }
+  ]
+}

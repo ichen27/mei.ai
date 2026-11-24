@@ -33,6 +33,10 @@ export function formatOrderText(order: Order, context: OrderNotifyContext = {}):
     '',
     ...order.items.flatMap((item) => [
       `${item.qty}× ${oneLine(item.itemNameSnapshot, 80)}`,
+      ...item.modifiersSnapshotJson.map((option) => {
+        const price = Number(option.price_cents ?? 0);
+        return `   + ${oneLine(String(option.label ?? option.id ?? ''), 80)}${price > 0 ? ` (+${dollars(price)})` : ''}`;
+      }),
       ...(item.specialInstructions ? [`   → ${oneLine(item.specialInstructions, 140)}`] : [])
     ]),
     ...(order.notes ? ['', `Note: ${oneLine(order.notes, 240)}`] : []),

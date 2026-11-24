@@ -39,12 +39,71 @@ This is the full current menu. Each line is: name | price | id.
 ${body}`;
 }
 
-export function buildSystemPrompt(storeName: string, menu?: PromptMenuItem[]): string {
-  const menuSection = menu ? buildMenuSection(menu) : '';
-  return basePrompt(storeName, menuSection !== '') + menuSection;
+/** The restaurant's change rules as the prompt needs them; matches the menu endpoint. */
+export interface PromptChangeRules {
+  unlisted_requests: 'pass_to_kitchen' | 'decline';
+  rules: Array<{
+    applies_to: 'all' | { categories: string[] } | { items: string[] };
+    can_change: Array<{ id: string; label: string; price_cents?: number | undefined }>;
+    cannot_change: string[];
+  }>;
 }
 
-function basePrompt(storeName: string, hasMenu: boolean): string {
+export function hasChangeRules(rules: PromptChangeRules | undefined): rules is PromptChangeRules {
+  return rules !== undefined && (rules.rules.length > 0 || rules.unlisted_requests === 'decline');
+}
+
+/**
+ * What callers may and may not change, as prompt text. Item rules show the
+ * item's name when the menu is known. Returns '' when there are no rules.
+ */
+export function buildChangeRulesSection(rules: PromptChangeRules | undefined, menu: PromptMenuItem[] = []): string {
+  if (!hasChangeRules(rules)) return '';
+  const nameOf = (id: string) => menu.find((item) => item.id === id)?.name ?? id;
+  const blocks = rules.rules.map((rule) => {
+    const scope =
+      rule.applies_to === 'all'
+        ? 'Any item'
+        : 'categories' in rule.applies_to
+          ? `Section: ${rule.applies_to.categories.join(', ')}`
+          : `Item: ${rule.applies_to.items.map((id) => `${nameOf(id)} (id: ${id})`).join('; ')}`;
+    const allowed = rule.can_change.map(
+      (option) =>
+        `- ${option.label} | ${option.price_cents ? `+${dollars(option.price_cents)}` : 'no charge'} | option: ${option.id}`
+    );
+    const refused = rule.cannot_change.map((text) => `- ${text}`);
+    return [
+      `### ${scope}`,
+      ...(allowed.length ? ['Allowed:', ...allowed] : []),
+      ...(refused.length ? ['Not allowed:', ...refused] : [])
+    ].join('\n');
+  });
+  const unlisted =
+    rules.unlisted_requests === 'decline'
+      ? '- A request that is not listed here: say politely that the kitchen cannot take that change over the phone. Do not put it in a note.'
+      : '- A request that is not listed here: accept it, put it in that item\'s note, and say you will pass it to the kitchen. Do not promise it can be done.';
+  return `
+
+## Changes callers can ask for
+The restaurant set these rules. Follow them exactly.
+- An allowed change: add its option id to that item's "options" in create_order. The system adds any charge. Tell the caller the extra cost when there is one.
+- A change marked not allowed: say politely that it is not available. Do not put it in a note and do not offer a workaround.
+${unlisted}
+- A rule for an item overrides a rule for its section, which overrides a rule for any item.
+
+${blocks.join('\n\n')}`;
+}
+
+export function buildSystemPrompt(storeName: string, menu?: PromptMenuItem[], changeRules?: PromptChangeRules): string {
+  const menuSection = menu ? buildMenuSection(menu) : '';
+  const rulesSection = buildChangeRulesSection(changeRules, menu);
+  return basePrompt(storeName, menuSection !== '', rulesSection !== '') + menuSection + rulesSection;
+}
+
+function basePrompt(storeName: string, hasMenu: boolean, hasRules: boolean): string {
+  const changeRule = hasRules
+    ? `- If the caller asks to change an item, follow the "Changes callers can ask for" section below. Do not use transfer_to_staff for a change request.`
+    : `- If the caller asks to change an item (no onions, extra spicy, add something, swap a side), accept it and put it in that item's note in create_order. Say you will pass the request to the kitchen. Do not promise it can be done, and if they are adding something, say the price may change at pickup. Do not use transfer_to_staff for a change like this.`;
   const menuRules = hasMenu
     ? `- You can ONLY offer items in the Menu section below. You already have the menu, so you do not need search_menu to answer what is available; use it only to double-check an item you are unsure about.`
     : `- You can ONLY offer items that exist in the menu. Use the search_menu tool to look up items.
@@ -59,7 +118,7 @@ function basePrompt(storeName: string, hasMenu: boolean): string {
 - Payment is at pickup. Do not ask for payment information.
 - You MUST collect the caller's name before taking their order.
 ${menuRules}
-- If the caller asks to change an item (no onions, extra spicy, add something, swap a side), accept it and put it in that item's note in create_order. Say you will pass the request to the kitchen. Do not promise it can be done, and if they are adding something, say the price may change at pickup. Do not use transfer_to_staff for a change like this.
+${changeRule}
 - An allergy or a request about the whole order goes in the order's notes. For an allergy, also say you cannot guarantee the kitchen is free of that ingredient.
 - Before submitting an order, read it back, including any requested changes, to the caller and get explicit confirmation ("yes", "that's right", etc.). Do NOT submit until they confirm.
 - Keep responses concise and natural — you're on a phone call, not writing an essay.
@@ -131,10 +190,16 @@ export function buildToolDefinitions(): Array<{
               properties: {
                 item_id: { type: 'string', description: 'Menu item ID from the menu or search_menu results' },
                 qty: { type: 'integer', description: 'Quantity ordered' },
+                options: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description:
+                    'Option ids for this item, taken from the "Changes callers can ask for" section. Use these for listed changes. Leave out when there are none.'
+                },
                 note: {
                   type: 'string',
                   description:
-                    'The caller\'s requested change to this item, in a few words for the kitchen, e.g. "no onions", "extra spicy", "sauce on the side". Leave out when there is none.'
+                    'A requested change that has no option id, in a few words for the kitchen, e.g. "sauce on the side". Leave out when there is none.'
                 }
               },
               required: ['item_id', 'qty']

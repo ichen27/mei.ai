@@ -25,7 +25,7 @@ interface Order {
   rejectReason?: string;
   ackedClientIds: string[];
   /** What was ordered, so the card is readable without opening Details. */
-  items: Array<{ name: string; qty: number; note?: string }>;
+  items: Array<{ name: string; qty: number; note?: string; options: string[] }>;
 }
 
 interface OrderDetail {
@@ -260,6 +260,11 @@ export function App() {
                     {order.items.map((item, index) => (
                       <li key={`${order.id}-${index}`}>
                         <strong>{item.qty}×</strong> {item.name}
+                        {item.options.map((option) => (
+                          <div key={option} className="order-note">
+                            + {option}
+                          </div>
+                        ))}
                         {item.note ? <div className="order-note">→ {item.note}</div> : null}
                       </li>
                     ))}
@@ -506,7 +511,13 @@ async function loadOrders(
     items: (Array.isArray(order.items) ? (order.items as Array<Record<string, unknown>>) : []).map((item) => ({
       name: String(item.itemNameSnapshot ?? item.itemId ?? ''),
       qty: Number(item.qty ?? 1),
-      note: typeof item.specialInstructions === 'string' ? item.specialInstructions : undefined
+      note: typeof item.specialInstructions === 'string' ? item.specialInstructions : undefined,
+      options: (Array.isArray(item.modifiersSnapshotJson) ? (item.modifiersSnapshotJson as Array<Record<string, unknown>>) : []).map(
+        (option) => {
+          const price = Number(option.price_cents ?? 0);
+          return `${String(option.label ?? option.id ?? '')}${price > 0 ? ` (+$${(price / 100).toFixed(2)})` : ''}`;
+        }
+      )
     }))
   }));
   setOrders(mapped);

@@ -7,6 +7,7 @@ import type { OrderStatus, StoreMode } from './types.js';
 import { safeLog } from './logger.js';
 import { oneLine } from './text.js';
 import { createRepository } from './store/factory.js';
+import { createChangeRulesSource } from './store/changeRules.js';
 import { asyncRoute } from './http/asyncRoute.js';
 import { errorMiddleware } from './http/errorMiddleware.js';
 import { AuthService } from './auth/service.js';
@@ -124,6 +125,8 @@ export function createApp(options: CreateAppOptions = {}) {
   const { repository: db, backend } = createRepository();
   const orderService = new OrderService(db);
   const authService = new AuthService(db);
+  // What callers may change about an order; reread whenever the file changes.
+  const changeRules = createChangeRulesSource(process.env.CHANGE_RULES_FILE);
 
   const loginLimiter = createRateLimiter({
     keyPrefix: 'auth_login',
@@ -463,7 +466,8 @@ export function createApp(options: CreateAppOptions = {}) {
         price_cents: item.basePriceCents,
         is_available: item.isAvailable,
         ...(item.category ? { category: item.category } : {})
-      }))
+      })),
+      change_rules: changeRules.get()
     });
   }));
 
@@ -481,7 +485,8 @@ export function createApp(options: CreateAppOptions = {}) {
       items: z.array(z.object({
         item_id: z.string().min(1).max(120),
         qty: z.number().int().positive().max(99),
-        note: z.string().max(300).optional()
+        note: z.string().max(300).optional(),
+        options: z.array(z.string().min(1).max(60)).max(12).optional()
       })).min(1).max(60)
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -494,7 +499,7 @@ export function createApp(options: CreateAppOptions = {}) {
     });
 
     let priced: ReturnType<typeof priceMenuOrder>;
-    try { priced = priceMenuOrder(await db.getMenu(parsed.data.store_id), parsed.data.items); }
+    try { priced = priceMenuOrder(await db.getMenu(parsed.data.store_id), parsed.data.items, changeRules.get()); }
     catch (error) {
       if (error instanceof MenuOrderError) return res.status(400).json({ error: { code: error.code, message: error.message } });
       throw error;

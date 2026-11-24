@@ -190,7 +190,7 @@ describe('webhook route', () => {
       config: cfg,
       client: fake.client,
       createTools: () => tools,
-      loadMenu: async () => menu
+      loadMenu: async () => (menu ? { items: menu } : undefined)
     });
     const server = express();
     server.use('/api/webhooks/openai', router);

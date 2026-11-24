@@ -1,5 +1,10 @@
 import { readFileSync } from 'node:fs';
-import { buildSystemPrompt, buildToolDefinitions, type PromptMenuItem } from '../../workers/call-prompt.js';
+import {
+  buildSystemPrompt,
+  buildToolDefinitions,
+  type PromptChangeRules,
+  type PromptMenuItem
+} from '../../workers/call-prompt.js';
 
 /** Which OpenAI voice API answers a call: GPT-Live or the Realtime API. */
 export type SipMode = 'live' | 'realtime';
@@ -94,9 +99,13 @@ function voiceAddendum(hasMenu: boolean): string {
  * With `menu`, both models carry the menu, so the voice model can answer menu
  * questions itself instead of waiting on the backend.
  */
-export function buildLiveAcceptBody(config: OpenAiSipConfig, menu?: PromptMenuItem[]): Record<string, unknown> {
+export function buildLiveAcceptBody(
+  config: OpenAiSipConfig,
+  menu?: PromptMenuItem[],
+  changeRules?: PromptChangeRules
+): Record<string, unknown> {
   const hasMenu = (menu?.length ?? 0) > 0;
-  const prompt = buildSystemPrompt(config.storeName, menu) + voiceAddendum(hasMenu);
+  const prompt = buildSystemPrompt(config.storeName, menu, changeRules) + voiceAddendum(hasMenu);
   const delegate = hasMenu
     ? 'Every tool runs in your backend. Answer menu questions yourself from the Menu section, and hand store-status and order work to the backend.'
     : 'Every tool runs in your backend. Hand all menu, store-status, and order work to it.';
@@ -133,11 +142,15 @@ export function buildLiveAcceptBody(config: OpenAiSipConfig, menu?: PromptMenuIt
 }
 
 /** Accept body for a Realtime API call. The speech model calls tools itself. */
-export function buildRealtimeAcceptBody(config: OpenAiSipConfig, menu?: PromptMenuItem[]): Record<string, unknown> {
+export function buildRealtimeAcceptBody(
+  config: OpenAiSipConfig,
+  menu?: PromptMenuItem[],
+  changeRules?: PromptChangeRules
+): Record<string, unknown> {
   return {
     type: 'realtime',
     model: config.realtimeModel,
-    instructions: buildSystemPrompt(config.storeName, menu) + voiceAddendum((menu?.length ?? 0) > 0),
+    instructions: buildSystemPrompt(config.storeName, menu, changeRules) + voiceAddendum((menu?.length ?? 0) > 0),
     audio: {
       input: { transcription: { model: config.realtimeTranscriptionModel } },
       output: { voice: config.voice }
