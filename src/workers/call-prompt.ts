@@ -47,6 +47,7 @@ export interface PromptChangeRules {
     can_change: Array<{ id: string; label: string; price_cents?: number | undefined }>;
     cannot_change: string[];
     guidance?: string[] | undefined;
+    comes_with?: string[] | undefined;
     swap_sections?: string[] | undefined;
   }>;
 }
@@ -76,11 +77,16 @@ export function buildChangeRulesSection(rules: PromptChangeRules | undefined, me
     const refused = rule.cannot_change.map((text) => `- ${text}`);
     const guidance = (rule.guidance ?? []).map((text) => `- ${text}`);
     const swapSections = rule.swap_sections ?? [];
+    const comesWith = (rule.comes_with ?? []).map((id) => `${nameOf(id)} (id: ${id})`);
     return [
       `### ${scope}`,
       ...(allowed.length ? ['Allowed:', ...allowed] : []),
-      ...(swapSections.length
-        ? ['Swaps:', `- One menu item for another, when both are in these sections: ${swapSections.join(', ')}.`]
+      ...(swapSections.length && comesWith.length
+        ? [
+            'Swaps:',
+            `- Comes with, and can be swapped out: ${comesWith.join('; ')}.`,
+            `- Can go in: any menu item in these sections: ${swapSections.join(', ')}.`
+          ]
         : []),
       ...(guidance.length ? ['Guidance:', ...guidance] : []),
       ...(refused.length ? ['Not allowed:', ...refused] : [])
@@ -90,8 +96,8 @@ export function buildChangeRulesSection(rules: PromptChangeRules | undefined, me
     rules.unlisted_requests === 'decline'
       ? '- A request that is not listed here: say politely that the kitchen cannot take that change over the phone. Do not put it in a note.'
       : '- A request that is not listed here: accept it, put it in that item\'s note, and say you will pass it to the kitchen. Do not promise it can be done. If it adds something or swaps something in, say there may be an extra charge that the restaurant confirms at pickup.';
-  const swapLine = rules.rules.some((rule) => (rule.swap_sections ?? []).length > 0)
-    ? `- A swap listed under "Swaps": add it to that item's "swaps" in create_order, with out_item_id (the menu item that comes out) and in_item_id (the menu item that goes in). Use the same size for both. The system charges the new item's menu price minus the old one's when the new one costs more, and nothing otherwise. Work that amount out from the menu and tell the caller before you place the order. Do not also write the swap in the note. A swap that is not between two menu items is a request that is not listed here.
+  const swapLine = rules.rules.some((rule) => (rule.swap_sections ?? []).length > 0 && (rule.comes_with ?? []).length > 0)
+    ? `- A swap listed under "Swaps": add it to that item's "swaps" in create_order, with out_item_id (one of the things the item comes with) and in_item_id (the menu item that goes in). The system charges the new item's menu price minus the old one's when the new one costs more, and nothing otherwise. Do not work that amount out yourself: call price_order with the item and its swap, and tell the caller the charge it returns. Do not also write the swap in the note. A swap of anything else is a request that is not listed here.
 `
     : '';
   return `
@@ -163,6 +169,44 @@ ${takeOrderStep}
 - end_call: End the call. Use after completing an order or when the store is closed.`;
 }
 
+/** The order lines create_order and price_order both take. */
+const ORDER_ITEMS_SCHEMA = {
+  type: 'array',
+  items: {
+    type: 'object',
+    properties: {
+      item_id: { type: 'string', description: 'Menu item ID from the menu or search_menu results' },
+      qty: { type: 'integer', description: 'Quantity ordered' },
+      options: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Option ids for this item, taken from the "Changes callers can ask for" section. Use these for listed changes. Leave out when there are none.'
+      },
+      swaps: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            out_item_id: { type: 'string', description: 'Menu item ID of the thing the item comes with that is taken out' },
+            in_item_id: { type: 'string', description: 'Menu item ID of what goes in' }
+          },
+          required: ['out_item_id', 'in_item_id']
+        },
+        description:
+          'Swaps of one menu item for another on this item, only where the "Changes callers can ask for" section lists swaps. Leave out when there are none.'
+      },
+      note: {
+        type: 'string',
+        description:
+          'A requested change that has no option id, in a few words for the kitchen, e.g. "sauce on the side". Leave out when there is none.'
+      }
+    },
+    required: ['item_id', 'qty']
+  },
+  description: 'List of items to order'
+};
+
 export function buildToolDefinitions(): Array<{
   type: 'function';
   name: string;
@@ -196,48 +240,24 @@ export function buildToolDefinitions(): Array<{
         type: 'object',
         properties: {
           customer_name: { type: 'string', description: 'The caller\'s name' },
-          items: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                item_id: { type: 'string', description: 'Menu item ID from the menu or search_menu results' },
-                qty: { type: 'integer', description: 'Quantity ordered' },
-                options: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description:
-                    'Option ids for this item, taken from the "Changes callers can ask for" section. Use these for listed changes. Leave out when there are none.'
-                },
-                swaps: {
-                  type: 'array',
-                  items: {
-                    type: 'object',
-                    properties: {
-                      out_item_id: { type: 'string', description: 'Menu item ID of what comes out' },
-                      in_item_id: { type: 'string', description: 'Menu item ID of what goes in, in the same size' }
-                    },
-                    required: ['out_item_id', 'in_item_id']
-                  },
-                  description:
-                    'Swaps of one menu item for another on this item, only where the "Changes callers can ask for" section lists swaps. Leave out when there are none.'
-                },
-                note: {
-                  type: 'string',
-                  description:
-                    'A requested change that has no option id, in a few words for the kitchen, e.g. "sauce on the side". Leave out when there is none.'
-                }
-              },
-              required: ['item_id', 'qty']
-            },
-            description: 'List of items to order'
-          },
+          items: ORDER_ITEMS_SCHEMA,
           notes: {
             type: 'string',
             description: 'A request about the whole order, e.g. "extra napkins" or an allergy. Leave out when there is none.'
           }
         },
         required: ['customer_name', 'items']
+      }
+    },
+    {
+      type: 'function',
+      name: 'price_order',
+      description:
+        'Price items without placing an order. Use it to tell the caller the exact cost of a swap or a paid change, or the total, before they confirm. Takes the same items as create_order and returns each line with its charges and the total, in cents.',
+      parameters: {
+        type: 'object',
+        properties: { items: ORDER_ITEMS_SCHEMA },
+        required: ['items']
       }
     },
     {

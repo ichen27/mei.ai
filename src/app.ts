@@ -476,22 +476,50 @@ export function createApp(options: CreateAppOptions = {}) {
     if (!isOrderIntakeEnabled()) {
       return res.status(503).json({ error: { code: 'ORDER_INTAKE_DISABLED', message: 'order intake disabled' } });
     }
+    const itemsSchema = z.array(z.object({
+      item_id: z.string().min(1).max(120),
+      qty: z.number().int().positive().max(99),
+      note: z.string().max(300).optional(),
+      options: z.array(z.string().min(1).max(60)).max(12).optional(),
+      swaps: z.array(z.object({
+        out_item_id: z.string().min(1).max(120),
+        in_item_id: z.string().min(1).max(120)
+      })).max(4).optional()
+    })).min(1).max(60);
+
+    // A quote prices the items exactly as an order would and stores nothing,
+    // so an agent can tell the caller a charge before they confirm.
+    const body = req.body as { quote_only?: unknown } | undefined;
+    if (body?.quote_only === true || body?.quote_only === 'true') {
+      const quote = z.object({ store_id: z.string().min(1), items: itemsSchema }).safeParse(req.body);
+      if (!quote.success) return res.status(400).json({ error: quote.error.flatten() });
+      try {
+        const priced = priceMenuOrder(await db.getMenu(quote.data.store_id), quote.data.items, changeRules.get());
+        return res.status(200).json({
+          quote_only: true,
+          total_cents: priced.totalCents,
+          items: priced.items.map((line) => ({
+            item_id: line.itemId,
+            name: line.itemNameSnapshot,
+            qty: line.qty,
+            base_price_cents: line.basePriceCents,
+            charges: line.modifiersSnapshotJson.map((charge) => ({ label: charge.label, price_cents: charge.price_cents })),
+            line_total_cents: line.lineTotalCents
+          }))
+        });
+      } catch (error) {
+        if (error instanceof MenuOrderError) return res.status(400).json({ error: { code: error.code, message: error.message } });
+        throw error;
+      }
+    }
+
     const parsed = z.object({
       store_id: z.string().min(1),
       call_id: z.string().max(200).optional(),
       customer_name: z.string().min(1).max(120),
       customer_phone: z.string().min(4).max(32),
       notes: z.string().max(400).optional(),
-      items: z.array(z.object({
-        item_id: z.string().min(1).max(120),
-        qty: z.number().int().positive().max(99),
-        note: z.string().max(300).optional(),
-        options: z.array(z.string().min(1).max(60)).max(12).optional(),
-        swaps: z.array(z.object({
-          out_item_id: z.string().min(1).max(120),
-          in_item_id: z.string().min(1).max(120)
-        })).max(4).optional()
-      })).min(1).max(60)
+      items: itemsSchema
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

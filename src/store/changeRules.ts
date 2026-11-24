@@ -12,9 +12,9 @@ import type { MenuItem } from '../types.js';
  * changes that are allowed, with an optional price, and changes that are not.
  * A rule can also carry guidance: the restaurant's own instructions for
  * open-ended requests, such as leaving an ingredient out or swapping a side,
- * that a fixed list of options cannot cover. A rule can also name menu
- * sections whose items may be swapped for one another on the items it covers;
- * the server prices such a swap from the two menu prices.
+ * that a fixed list of options cannot cover. A rule can also say what the
+ * items it covers come with and which menu sections a replacement may come
+ * from; the server prices such a swap from the two menu prices.
  */
 const optionSchema = z.object({
   id: z
@@ -35,7 +35,9 @@ const ruleSchema = z.object({
   can_change: z.array(optionSchema).default([]),
   cannot_change: z.array(z.string().min(1).max(160)).default([]),
   guidance: z.array(z.string().min(1).max(400)).max(20).default([]),
-  /** Sections whose items may be swapped for one another on the covered items. */
+  /** Menu item ids the covered items come with. Only these can be swapped out. */
+  comes_with: z.array(z.string().min(1).max(120)).max(10).default([]),
+  /** Sections a replacement may come from. */
   swap_sections: z.array(z.string().min(1).max(80)).max(40).default([])
 });
 
@@ -85,6 +87,7 @@ export function parseChangeRules(contents: string): ChangeRules {
       can_change: rule.can_change.map((option) => ({ ...option, label: oneLine(option.label, 80) })),
       cannot_change: rule.cannot_change.map((text) => oneLine(text, 160)),
       guidance: rule.guidance.map((text) => oneLine(text, 400)),
+      comes_with: rule.comes_with,
       swap_sections: rule.swap_sections.map((name) => oneLine(name, 80))
     }))
   };
@@ -109,7 +112,17 @@ export function optionsForItem(rules: ChangeRules, item: Pick<MenuItem, 'id' | '
   return [...byId.values()];
 }
 
-/** The menu sections whose items may be swapped in or out on one menu item. */
+/** Ids of the menu items one menu item comes with, which a caller may swap out. */
+export function comesWithForItem(rules: ChangeRules, item: Pick<MenuItem, 'id' | 'category'>): string[] {
+  const ids = new Set<string>();
+  for (const rule of rules.rules) {
+    if (!applies(rule, item)) continue;
+    for (const id of rule.comes_with) ids.add(id);
+  }
+  return [...ids];
+}
+
+/** The menu sections a replacement may come from on one menu item. */
 export function swapSectionsForItem(rules: ChangeRules, item: Pick<MenuItem, 'id' | 'category'>): string[] {
   const names = new Map<string, string>();
   for (const rule of rules.rules) {

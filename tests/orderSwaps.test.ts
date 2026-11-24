@@ -5,7 +5,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
 import { priceMenuOrder } from '../src/menuOrder.js';
-import { parseChangeRules, swapSectionsForItem } from '../src/store/changeRules.js';
+import { comesWithForItem, parseChangeRules, swapSectionsForItem } from '../src/store/changeRules.js';
 import type { MenuItem } from '../src/types.js';
 import { buildChangeRulesSection } from '../src/workers/call-prompt.js';
 
@@ -34,6 +34,7 @@ const rules = parseChangeRules(
       {
         applies_to: { categories: ['Combination Plates'] },
         can_change: [{ id: 'extra-meat', label: 'Extra meat', price_cents: 200 }],
+        comes_with: ['rice-pint'],
         swap_sections: ['Fried Rice', 'Lo Mein', 'Sides']
       }
     ]
@@ -46,8 +47,11 @@ const order = (swaps: Array<{ out_item_id: string; in_item_id: string }>, itemId
 describe('swap sections in the rules', () => {
   it('defaults to none and applies to the items the rule covers', () => {
     expect(parseChangeRules(JSON.stringify({ rules: [{ applies_to: 'all' }] })).rules[0]?.swap_sections).toEqual([]);
+    expect(parseChangeRules(JSON.stringify({ rules: [{ applies_to: 'all' }] })).rules[0]?.comes_with).toEqual([]);
     expect(swapSectionsForItem(rules, menu[0]!)).toEqual(['Fried Rice', 'Lo Mein', 'Sides']);
+    expect(comesWithForItem(rules, menu[0]!)).toEqual(['rice-pint']);
     expect(swapSectionsForItem(rules, menu[6]!)).toEqual([]);
+    expect(comesWithForItem(rules, menu[6]!)).toEqual([]);
   });
 });
 
@@ -81,9 +85,31 @@ describe('priceMenuOrder with swaps', () => {
     );
   });
 
-  it('refuses a swap that reaches outside the listed sections, in either direction', () => {
-    expect(() => order([{ out_item_id: 'rice-pint', in_item_id: 'duck' }])).toThrow('Special Duck cannot be part of a swap');
-    expect(() => order([{ out_item_id: 'duck', in_item_id: 'lomein-pint' }])).toThrow('Special Duck cannot be part of a swap');
+  it('only lets out what the item comes with, so a dear item cannot be named to make a swap free', () => {
+    expect(() => order([{ out_item_id: 'duck', in_item_id: 'lomein-pint' }])).toThrow(
+      'out_item_id must be something Sesame Chicken (Combination Plate) comes with: rice-pint.'
+    );
+    // In a listed section, but not something the plate comes with.
+    expect(() => order([{ out_item_id: 'lomein-pint', in_item_id: 'rice-pint' }])).toThrow('out_item_id must be something');
+  });
+
+  it('lets each thing out once, and only lets in items from the listed sections', () => {
+    expect(() =>
+      order([
+        { out_item_id: 'rice-pint', in_item_id: 'lomein-pint' },
+        { out_item_id: 'rice-pint', in_item_id: 'white-rice' }
+      ])
+    ).toThrow('can only be swapped out once');
+    expect(() => order([{ out_item_id: 'rice-pint', in_item_id: 'duck' }])).toThrow('Special Duck cannot go in on a swap');
+  });
+
+  it('needs both a comes-with list and sections before any swap is priced', () => {
+    const noComesWith = parseChangeRules(
+      JSON.stringify({ rules: [{ applies_to: 'all', swap_sections: ['Fried Rice', 'Lo Mein'] }] })
+    );
+    expect(() =>
+      priceMenuOrder(menu, [{ item_id: 'combo-1', qty: 1, swaps: [{ out_item_id: 'rice-pint', in_item_id: 'lomein-pint' }] }], noComesWith)
+    ).toThrow('Swaps are not priced');
   });
 
   it('refuses unknown ids, a swap of an item for itself, and an unavailable new item', () => {
@@ -94,13 +120,13 @@ describe('priceMenuOrder with swaps', () => {
 });
 
 describe('swaps in the prompt', () => {
-  it('lists the sections and explains how a swap is ordered and charged', () => {
-    const section = buildChangeRulesSection(rules);
+  it('lists what comes out and what can go in, and sends the agent to price_order for the charge', () => {
+    const section = buildChangeRulesSection(rules, [{ id: 'rice-pint', name: 'Roast Pork Fried Rice (Pint)', price_cents: 595 }]);
     expect(section).toContain(
-      'Swaps:\n- One menu item for another, when both are in these sections: Fried Rice, Lo Mein, Sides.'
+      'Swaps:\n- Comes with, and can be swapped out: Roast Pork Fried Rice (Pint) (id: rice-pint).\n- Can go in: any menu item in these sections: Fried Rice, Lo Mein, Sides.'
     );
-    expect(section).toContain('out_item_id (the menu item that comes out)');
-    expect(section).toContain("the new item's menu price minus the old one's");
+    expect(section).toContain('out_item_id (one of the things the item comes with)');
+    expect(section).toContain('Do not work that amount out yourself: call price_order');
   });
 
   it('says nothing about swaps when no rule lists any', () => {
@@ -112,7 +138,12 @@ describe('swaps in the prompt', () => {
 describe('orders with swaps through the API', () => {
   beforeEach(() => {
     const file = join(mkdtempSync(join(tmpdir(), 'mei-swaps-')), 'rules.json');
-    writeFileSync(file, JSON.stringify({ rules: [{ applies_to: 'all', swap_sections: ['Mains'] }] }));
+    writeFileSync(
+      file,
+      JSON.stringify({
+        rules: [{ applies_to: 'all', can_change: [{ id: 'extra-salsa', label: 'Extra salsa', price_cents: 50 }], swap_sections: ['Mains'] }]
+      })
+    );
     process.env.CHANGE_RULES_FILE = file;
     process.env.INTERNAL_API_KEY = 'test-internal-key';
   });
@@ -146,5 +177,48 @@ describe('orders with swaps through the API', () => {
 
     const malformed = await send('call-swap-2', [{ out_item_id: first!.id }]);
     expect(malformed.status).toBe(400);
+  });
+
+  it('prices items without placing an order when asked for a quote', async () => {
+    const { app } = createApp();
+    const quote = (body: Record<string, unknown>) =>
+      request(app).post('/api/internal/orders').set('x-internal-api-key', 'test-internal-key').send(body);
+
+    const res = await quote({ store_id: 'store-1', quote_only: true, items: [{ item_id: 'item-burrito', qty: 2, options: ['extra-salsa'] }] });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      quote_only: true,
+      total_cents: (1299 + 50) * 2,
+      items: [
+        {
+          item_id: 'item-burrito',
+          name: 'Chicken Burrito',
+          qty: 2,
+          base_price_cents: 1299,
+          charges: [{ label: 'Extra salsa', price_cents: 50 }],
+          line_total_cents: (1299 + 50) * 2
+        }
+      ]
+    });
+
+    // The hosted agent's tool sends the flag as a string.
+    const asString = await quote({ store_id: 'store-1', quote_only: 'true', items: [{ item_id: 'item-burrito', qty: 1 }] });
+    expect(asString.status).toBe(200);
+    expect(asString.body.total_cents).toBe(1299);
+
+    const refused = await quote({ store_id: 'store-1', quote_only: true, items: [{ item_id: 'item-burrito', qty: 1, options: ['nope'] }] });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe('OPTION_NOT_ALLOWED');
+
+    // Nothing was stored: the same call id still places a fresh order.
+    const placed = await quote({
+      store_id: 'store-1',
+      call_id: 'call-quote-1',
+      customer_name: 'Sam',
+      customer_phone: '+14155550123',
+      items: [{ item_id: 'item-burrito', qty: 1 }]
+    });
+    expect(placed.status).toBe(201);
+    expect(placed.body.order_number).toBeDefined();
   });
 });

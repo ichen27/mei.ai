@@ -46,8 +46,11 @@
         "Brown rice instead of white"
       ],
       "swap_sections": [
-        "Fried Rice",
-        "Lo Mein"
+        "Appetizers",
+        "Soup"
+      ],
+      "comes_with": [
+        "egg-roll"
       ]
     },
     {

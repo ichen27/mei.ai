@@ -76,6 +76,26 @@ describe('CallToolHandler', () => {
     });
   });
 
+  describe('price_order', () => {
+    it('asks the order endpoint for a quote and passes the server\'s reason back on a refusal', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ quote_only: true, total_cents: 1295 }) });
+      const items = [{ item_id: 'combo-1', qty: 1, swaps: [{ out_item_id: 'rice', in_item_id: 'lomein' }] }];
+      const result = await handler.execute('price_order', JSON.stringify({ items }));
+      expect(JSON.parse(result)).toEqual({ quote_only: true, total_cents: 1295 });
+      const [url, init] = mockFetch.mock.calls[0] as [string, { body: string }];
+      expect(url).toBe('http://localhost:3000/api/internal/orders');
+      expect(JSON.parse(init.body)).toEqual({ store_id: 'store-1', quote_only: true, items });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ error: { code: 'SWAP_NOT_ALLOWED', message: 'out_item_id must be something it comes with: rice.' } })
+      });
+      const refused = JSON.parse(await handler.execute('price_order', JSON.stringify({ items })));
+      expect(refused.error).toBe('API /api/internal/orders returned 400: out_item_id must be something it comes with: rice.');
+    });
+  });
+
   describe('create_order', () => {
     it('posts simplified order to internal endpoint', async () => {
       mockFetch.mockResolvedValueOnce({

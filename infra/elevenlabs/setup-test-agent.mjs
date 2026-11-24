@@ -52,6 +52,45 @@ async function ensureSecret() {
   return created.secret_id;
 }
 
+/** The order lines create_order and price_order both take. */
+const ORDER_ITEMS = {
+  type: 'array',
+  description: 'Items in the order.',
+  items: {
+    type: 'object',
+    description: 'One line of the order.',
+    required: ['item_id', 'qty'],
+    properties: {
+      item_id: { type: 'string', description: 'Menu item id from the menu or search_menu results.' },
+      qty: { type: 'integer', description: 'Quantity ordered.' },
+      options: {
+        type: 'array',
+        description: 'Option ids for this item from the "Changes callers can ask for" section. Leave empty when there are none.',
+        items: { type: 'string', description: 'One option id.' }
+      },
+      swaps: {
+        type: 'array',
+        description:
+          'Swaps of one menu item for another on this item, only where the "Changes callers can ask for" section lists swaps. Leave empty when there are none.',
+        items: {
+          type: 'object',
+          description: 'One swap.',
+          required: ['out_item_id', 'in_item_id'],
+          properties: {
+            out_item_id: { type: 'string', description: 'Menu item id of the thing the item comes with that is taken out.' },
+            in_item_id: { type: 'string', description: 'Menu item id of what goes in.' }
+          }
+        }
+      },
+      note: {
+        type: 'string',
+        description:
+          "A requested change that has no option id, in a few words for the kitchen, e.g. sauce on the side. Leave empty when there is none."
+      }
+    }
+  }
+};
+
 function toolConfigs(secretId) {
   const headers = { 'x-internal-api-key': { secret_id: secretId } };
   return [
@@ -82,6 +121,28 @@ function toolConfigs(secretId) {
     },
     {
       type: 'webhook',
+      name: 'price_order',
+      description:
+        'Price items without placing an order. Use it to tell the caller the exact cost of a swap or a paid change, or the total, before they confirm. Returns each line with its charges and the total, in cents.',
+      response_timeout_secs: 10,
+      api_schema: {
+        url: `${orderApi}/api/internal/orders`,
+        method: 'POST',
+        request_headers: headers,
+        request_body_schema: {
+          type: 'object',
+          description: 'The items to price.',
+          required: ['store_id', 'quote_only', 'items'],
+          properties: {
+            store_id: { type: 'string', constant_value: storeId },
+            quote_only: { type: 'string', constant_value: 'true' },
+            items: ORDER_ITEMS
+          }
+        }
+      }
+    },
+    {
+      type: 'webhook',
       name: 'create_order',
       description: 'Submit a confirmed pickup order. Only call this AFTER the caller has confirmed the order readback.',
       response_timeout_secs: 15,
@@ -98,43 +159,7 @@ function toolConfigs(secretId) {
             call_id: { type: 'string', dynamic_variable: 'system__conversation_id' },
             customer_name: { type: 'string', description: "The caller's name." },
             customer_phone: { type: 'string', dynamic_variable: 'system__caller_id' },
-            items: {
-              type: 'array',
-              description: 'Items in the order.',
-              items: {
-                type: 'object',
-                description: 'One line of the order.',
-                required: ['item_id', 'qty'],
-                properties: {
-                  item_id: { type: 'string', description: 'Menu item id from the menu or search_menu results.' },
-                  qty: { type: 'integer', description: 'Quantity ordered.' },
-                  options: {
-                    type: 'array',
-                    description: 'Option ids for this item from the "Changes callers can ask for" section. Leave empty when there are none.',
-                    items: { type: 'string', description: 'One option id.' }
-                  },
-                  swaps: {
-                    type: 'array',
-                    description:
-                      'Swaps of one menu item for another on this item, only where the "Changes callers can ask for" section lists swaps. Leave empty when there are none.',
-                    items: {
-                      type: 'object',
-                      description: 'One swap.',
-                      required: ['out_item_id', 'in_item_id'],
-                      properties: {
-                        out_item_id: { type: 'string', description: 'Menu item id of what comes out.' },
-                        in_item_id: { type: 'string', description: 'Menu item id of what goes in, in the same size.' }
-                      }
-                    }
-                  },
-                  note: {
-                    type: 'string',
-                    description:
-                      "A requested change that has no option id, in a few words for the kitchen, e.g. sauce on the side. Leave empty when there is none."
-                  }
-                }
-              }
-            },
+            items: ORDER_ITEMS,
             notes: {
               type: 'string',
               description: 'A request about the whole order, e.g. extra napkins or an allergy. Leave empty when there is none.'

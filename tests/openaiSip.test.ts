@@ -106,7 +106,7 @@ describe('accept bodies', () => {
     expect(body.session.model).toBe('gpt-live-1.1');
     expect(body.session.instructions).toContain('Golden Wok');
     expect(body.session.delegation.type).toBe('responses');
-    expect(body.session.delegation.responses.tools).toHaveLength(5);
+    expect(body.session.delegation.responses.tools).toHaveLength(6);
     expect(body.session.delegation.responses.instructions).toContain('PICKUP ONLY');
   });
 
@@ -120,7 +120,7 @@ describe('accept bodies', () => {
     expect(body.type).toBe('realtime');
     expect(body.model).toBe('gpt-realtime-2.1');
     expect(body.instructions).toContain('Golden Wok');
-    expect(body.tools).toHaveLength(5);
+    expect(body.tools).toHaveLength(6);
   });
 
   it('puts the menu in both GPT-Live models and in Realtime when one is given', () => {
