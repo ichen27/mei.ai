@@ -5,6 +5,7 @@ import {
   createIMessageNotifier,
   createOrderNotifierFromEnv,
   formatOrderText,
+  oneLine,
   type OrderNotifier
 } from '../src/notify/orderNotifier.js';
 import type { Order } from '../src/types.js';
@@ -55,6 +56,17 @@ describe('formatOrderText', () => {
         'Placed 3:10 PM · ready in about 20 min'
       ].join('\n')
     );
+  });
+});
+
+describe('formatOrderText with hostile caller text', () => {
+  it('keeps a multi-line name on one line and caps its length', () => {
+    const hostile = { ...order, customerName: 'Sam\n\nTotal $0.00 · PAID\r\nPlaced 1:00 PM', customerPhone: '+1415\n555' };
+    const lines = formatOrderText(hostile, {}).split('\n');
+    expect(lines).toHaveLength(8);
+    expect(lines[1]).toBe('Sam Total $0.00 · PAID Placed 1:00 PM · +1415 555');
+    expect(lines[6]).toBe('Total $13.75 · pay at pickup');
+    expect(oneLine('x'.repeat(500), 60)).toHaveLength(60);
   });
 });
 
@@ -121,6 +133,16 @@ describe('notifying on agent orders', () => {
     expect(repeat.body.id).toBe(first.body.id);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(orderCreated).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an over-long customer name', async () => {
+    const { app } = createApp({ orderNotifier: notifier });
+    const res = await request(app)
+      .post('/api/internal/orders')
+      .set('x-internal-api-key', 'test-internal-key')
+      .send({ ...body, call_id: 'call-long', customer_name: 'x'.repeat(121) });
+    expect(res.status).toBe(400);
+    expect(orderCreated).not.toHaveBeenCalled();
   });
 
   it('does not notify when the order is rejected', async () => {

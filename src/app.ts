@@ -473,13 +473,13 @@ export function createApp(options: CreateAppOptions = {}) {
     }
     const parsed = z.object({
       store_id: z.string().min(1),
-      call_id: z.string().optional(),
-      customer_name: z.string().min(1),
-      customer_phone: z.string().min(4),
+      call_id: z.string().max(200).optional(),
+      customer_name: z.string().min(1).max(120),
+      customer_phone: z.string().min(4).max(32),
       items: z.array(z.object({
-        item_id: z.string().min(1),
-        qty: z.number().int().positive()
-      })).min(1)
+        item_id: z.string().min(1).max(120),
+        qty: z.number().int().positive().max(99)
+      })).min(1).max(60)
     }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
