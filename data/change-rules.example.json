@@ -20,6 +20,10 @@
       "cannot_change": [
         "Half portions",
         "Splitting one dish into two sauces"
+      ],
+      "guidance": [
+        "Leaving out an ingredient (no mushrooms, no peanuts): allowed, no charge.",
+        "Swapping one side for another: allowed. No charge when the two cost the same; if the new one costs more, the caller pays the difference and the restaurant confirms the amount at pickup."
       ]
     },
     {

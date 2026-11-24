@@ -10,6 +10,9 @@ import type { MenuItem } from '../types.js';
  *
  * A rule covers every item, some menu sections, or some items. Each rule lists
  * changes that are allowed, with an optional price, and changes that are not.
+ * A rule can also carry guidance: the restaurant's own instructions for
+ * open-ended requests, such as leaving an ingredient out or swapping a side,
+ * that a fixed list of options cannot cover.
  */
 const optionSchema = z.object({
   id: z
@@ -28,7 +31,8 @@ const ruleSchema = z.object({
     z.object({ items: z.array(z.string().min(1)).min(1) }).strict()
   ]),
   can_change: z.array(optionSchema).default([]),
-  cannot_change: z.array(z.string().min(1).max(160)).default([])
+  cannot_change: z.array(z.string().min(1).max(160)).default([]),
+  guidance: z.array(z.string().min(1).max(400)).max(20).default([])
 });
 
 const fileSchema = z.object({
@@ -75,7 +79,8 @@ export function parseChangeRules(contents: string): ChangeRules {
     rules: parsed.data.rules.map((rule) => ({
       applies_to: rule.applies_to,
       can_change: rule.can_change.map((option) => ({ ...option, label: oneLine(option.label, 80) })),
-      cannot_change: rule.cannot_change.map((text) => oneLine(text, 160))
+      cannot_change: rule.cannot_change.map((text) => oneLine(text, 160)),
+      guidance: rule.guidance.map((text) => oneLine(text, 400))
     }))
   };
 }

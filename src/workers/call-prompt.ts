@@ -46,6 +46,7 @@ export interface PromptChangeRules {
     applies_to: 'all' | { categories: string[] } | { items: string[] };
     can_change: Array<{ id: string; label: string; price_cents?: number | undefined }>;
     cannot_change: string[];
+    guidance?: string[] | undefined;
   }>;
 }
 
@@ -72,21 +73,24 @@ export function buildChangeRulesSection(rules: PromptChangeRules | undefined, me
         `- ${option.label} | ${option.price_cents ? `+${dollars(option.price_cents)}` : 'no charge'} | option: ${option.id}`
     );
     const refused = rule.cannot_change.map((text) => `- ${text}`);
+    const guidance = (rule.guidance ?? []).map((text) => `- ${text}`);
     return [
       `### ${scope}`,
       ...(allowed.length ? ['Allowed:', ...allowed] : []),
+      ...(guidance.length ? ['Guidance:', ...guidance] : []),
       ...(refused.length ? ['Not allowed:', ...refused] : [])
     ].join('\n');
   });
   const unlisted =
     rules.unlisted_requests === 'decline'
       ? '- A request that is not listed here: say politely that the kitchen cannot take that change over the phone. Do not put it in a note.'
-      : '- A request that is not listed here: accept it, put it in that item\'s note, and say you will pass it to the kitchen. Do not promise it can be done.';
+      : '- A request that is not listed here: accept it, put it in that item\'s note, and say you will pass it to the kitchen. Do not promise it can be done. If it adds something or swaps something in, say there may be an extra charge that the restaurant confirms at pickup.';
   return `
 
 ## Changes callers can ask for
 The restaurant set these rules. Follow them exactly.
 - An allowed change: add its option id to that item's "options" in create_order. The system adds any charge. Tell the caller the extra cost when there is one.
+- A "Guidance" line is the restaurant's own instruction for that kind of request. Follow it. A change it allows has no option id, so write it in that item's note in a few words for the kitchen.
 - A change marked not allowed: say politely that it is not available. Do not put it in a note and do not offer a workaround.
 ${unlisted}
 - A rule for an item overrides a rule for its section, which overrides a rule for any item.

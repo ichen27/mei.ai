@@ -44,6 +44,7 @@ describe('parseChangeRules', () => {
     expect(rules.unlisted_requests).toBe('pass_to_kitchen');
     expect(rules.rules).toHaveLength(3);
     expect(rules.rules[1]?.cannot_change).toEqual([]);
+    expect(rules.rules[1]?.guidance).toEqual([]);
   });
 
   it('rejects bad JSON, a bad option id, and one id used for two changes', () => {
@@ -129,6 +130,28 @@ describe('change rules in the prompt', () => {
     expect(section).toContain('### Section: Fried Rice\nAllowed:\n- Extra meat | +$2.00 | option: extra-meat');
     expect(section).toContain('### Item: Chicken Burrito (id: item-burrito)');
     expect(section).toContain('put it in that item\'s note');
+  });
+
+  it('passes the restaurant\'s guidance through, on one line, between allowed and not allowed', () => {
+    const withGuidance = parseChangeRules(
+      JSON.stringify({
+        rules: [
+          {
+            applies_to: { categories: ['Fried Rice'] },
+            can_change: [{ id: 'extra-spicy', label: 'Extra spicy' }],
+            cannot_change: ['Half portions'],
+            guidance: ['Leaving out an ingredient: allowed, no charge.\nPut it in the note.']
+          }
+        ]
+      })
+    );
+    expect(withGuidance.rules[0]?.guidance).toEqual(['Leaving out an ingredient: allowed, no charge. Put it in the note.']);
+    const section = buildChangeRulesSection(withGuidance);
+    expect(section).toContain(
+      'Allowed:\n- Extra spicy | no charge | option: extra-spicy\nGuidance:\n- Leaving out an ingredient: allowed, no charge. Put it in the note.\nNot allowed:\n- Half portions'
+    );
+    expect(section).toContain('A "Guidance" line is the restaurant\'s own instruction');
+    expect(section).toContain('there may be an extra charge that the restaurant confirms at pickup');
   });
 
   it('tells the agent to decline unlisted requests when the restaurant says so', () => {
